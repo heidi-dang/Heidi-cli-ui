@@ -3,29 +3,46 @@ import Sidebar from './components/Sidebar';
 import Chat from './pages/Chat';
 import Settings from './pages/Settings';
 import Gemini from './pages/Gemini';
+import Login from './pages/Login';
+import AuthCallback from './pages/AuthCallback';
+import { api } from './api/heidi';
+import { User } from './types';
+import { Loader2 } from 'lucide-react';
 
 function App() {
   const [currentView, setCurrentView] = useState<'chat' | 'settings' | 'gemini'>('chat');
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [refreshSidebarTrigger, setRefreshSidebarTrigger] = useState(0);
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
   
-  // Default to open on desktop, closed on mobile
+  // Routing State
+  const [path, setPath] = useState(window.location.pathname);
+
+  // Sidebar State
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
-  // Monitor screen size
+  // Monitor screen size & Auth boot
   useEffect(() => {
+    const init = async () => {
+        // 1. Check Auth
+        const me = await api.getMe();
+        setUser(me);
+        setIsAuthLoading(false);
+    };
+    init();
+
     const handleResize = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
       if (!mobile && !isSidebarOpen) {
-          // Optional: Auto-open when resizing to desktop
           // setIsSidebarOpen(true); 
       }
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [isSidebarOpen]);
+  }, []);
 
   const handleNavigate = (view: 'chat' | 'settings' | 'gemini') => {
     setCurrentView(view);
@@ -51,8 +68,32 @@ function App() {
       setRefreshSidebarTrigger(prev => prev + 1);
   };
 
+  const handleLogout = async () => {
+      await api.logout();
+      setUser(null);
+      window.location.href = '/login';
+  };
+
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
+  // Simple Router Logic
+  if (path === '/auth/callback') {
+      return <AuthCallback />;
+  }
+
+  if (path === '/login') {
+      return <Login />;
+  }
+
+  if (isAuthLoading) {
+      return (
+          <div className="flex h-screen w-full items-center justify-center bg-[#0f0c29] text-white">
+              <Loader2 className="animate-spin text-indigo-500" size={32} />
+          </div>
+      );
+  }
+
+  // Main App Layout
   return (
     <div className="flex h-screen w-full bg-[#0f0c29] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#240b36] via-[#0f0c29] to-[#000000] text-slate-100 overflow-hidden font-sans selection:bg-pink-500/30">
       
@@ -88,6 +129,8 @@ function App() {
                 refreshTrigger={refreshSidebarTrigger}
                 isOpen={isSidebarOpen}
                 onToggle={toggleSidebar}
+                user={user}
+                onLogout={handleLogout}
             />
         </div>
       </aside>

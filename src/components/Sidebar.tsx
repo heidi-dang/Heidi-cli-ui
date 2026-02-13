@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { RunSummary } from '../types';
+import { RunSummary, User } from '../types';
 import { api } from '../api/heidi';
-import { RefreshCw, Settings, MessageSquare, Circle, CheckCircle, XCircle, AlertTriangle, PanelLeft, User, Plus, Sparkles } from 'lucide-react';
+import { RefreshCw, Settings, MessageSquare, Circle, CheckCircle, XCircle, AlertTriangle, PanelLeft, User as UserIcon, Plus, Sparkles, LogOut } from 'lucide-react';
 
 interface SidebarProps {
   currentView: 'chat' | 'settings' | 'gemini';
@@ -11,9 +11,11 @@ interface SidebarProps {
   refreshTrigger: number;
   isOpen: boolean;
   onToggle: () => void;
+  user: User | null;
+  onLogout: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onSelectRun, selectedRunId, refreshTrigger, isOpen, onToggle }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onSelectRun, selectedRunId, refreshTrigger, isOpen, onToggle, user, onLogout }) => {
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -60,7 +62,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onSelectRun,
             </div>
         </div>
         
-        {/* Close Button (Visible on mobile only for logic, but UI demands consistency) */}
         <button 
             onClick={onToggle}
             className="text-slate-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-white/5 md:hidden"
@@ -181,14 +182,38 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onSelectRun,
       
       {/* Footer */}
       <div className="p-4 border-t border-white/5 mt-auto bg-black/20 shrink-0">
-          <div className="flex items-center gap-3 w-full p-2.5 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors cursor-default">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold shadow-inner">
-              <User size={16} />
+          <div className="flex items-center justify-between gap-3 w-full p-2.5 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors cursor-default group">
+            <div className="flex items-center gap-3 overflow-hidden">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold shadow-inner overflow-hidden">
+                {user?.avatar_url ? (
+                    <img src={user.avatar_url} alt="avatar" className="w-full h-full object-cover" />
+                ) : (
+                    <UserIcon size={16} />
+                )}
+                </div>
+                <div className="flex flex-col items-start overflow-hidden min-w-0">
+                <span className="text-xs font-bold text-slate-200 truncate w-full text-left">{user?.username || 'Guest User'}</span>
+                <span className="text-[10px] text-slate-500 truncate w-full">{user?.provider ? `via ${user.provider}` : 'heidi-local'}</span>
+                </div>
             </div>
-            <div className="flex flex-col items-start overflow-hidden min-w-0">
-              <span className="text-xs font-bold text-slate-200 truncate w-full text-left">Local User</span>
-              <span className="text-[10px] text-slate-500 truncate w-full">heidi-local</span>
-            </div>
+            
+            {user && (
+                <button 
+                    onClick={onLogout}
+                    className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                    title="Sign Out"
+                >
+                    <LogOut size={16} />
+                </button>
+            )}
+            {!user && (
+                <button 
+                    onClick={() => window.location.href = '/login'}
+                    className="p-1.5 text-slate-500 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100 text-[10px] font-bold uppercase"
+                >
+                    Login
+                </button>
+            )}
           </div>
       </div>
     </div>
