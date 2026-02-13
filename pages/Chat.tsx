@@ -31,6 +31,9 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
   const [isSending, setIsSending] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
 
+  // Derived state to check if a run is actively processing
+  const isRunActive = !!runId && !['completed', 'failed', 'cancelled', 'idle'].includes(status.toLowerCase());
+
   // Refs for streaming management
   const eventSourceRef = useRef<EventSource | null>(null);
   const pollingRef = useRef<any>(null);
@@ -106,7 +109,8 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
 
       if (
         details.meta?.status !== RunStatus.COMPLETED &&
-        details.meta?.status !== RunStatus.FAILED
+        details.meta?.status !== RunStatus.FAILED &&
+        details.meta?.status !== RunStatus.CANCELLED
       ) {
         startStreaming(id);
       }
@@ -393,7 +397,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
             })}
             
             {/* Loading Indicator for stream */}
-            {(status.toLowerCase() !== 'completed' && status.toLowerCase() !== 'failed' && status.toLowerCase() !== 'idle' && status.toLowerCase() !== 'cancelled') && (
+            {isRunActive && !status.includes('cancelling') && (
                 <div className="flex gap-4 max-w-[90%]">
                     <div className="w-10 h-10 flex-shrink-0" />
                     <div className="flex items-center gap-2 text-purple-400/70 text-sm bg-purple-900/10 px-3 py-1.5 rounded-full border border-purple-500/10">
@@ -437,8 +441,8 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
       <div className="p-6 z-20">
         <div className="max-w-4xl mx-auto space-y-4 bg-black/40 backdrop-blur-xl border border-white/10 p-4 rounded-2xl shadow-2xl">
             
-            {/* Input Controls */}
-            {!runId && (
+            {/* Input Controls - Only show if we are not in an active run */}
+            {!isRunActive && (
                 <div className="flex flex-wrap items-center gap-4 text-sm text-slate-400 p-1">
                     {/* Mode Toggle */}
                     <div className="flex bg-black/40 rounded-lg p-1 border border-white/5">
@@ -506,30 +510,20 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
                     onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey && !runId) {
+                        if (e.key === 'Enter' && !e.shiftKey && !isRunActive) {
                             e.preventDefault();
                             handleStart();
                         }
                     }}
                     placeholder={mode === AppMode.LOOP ? "Describe the task you want Heidi to complete..." : "Ask Heidi a question or give a command..."}
-                    disabled={!!runId || isSending}
+                    disabled={isRunActive || isSending}
                     className="w-full bg-black/20 border border-white/10 text-white placeholder-slate-500/70 rounded-xl p-4 pr-16 focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 outline-none resize-none min-h-[60px] max-h-[200px] shadow-inner disabled:opacity-50 disabled:cursor-not-allowed transition-all group-hover:bg-black/30"
                     rows={1}
                     style={{ minHeight: '80px' }}
                 />
                 
                 <div className="absolute right-3 bottom-3">
-                    {!runId ? (
-                        <button
-                            onClick={handleStart}
-                            disabled={!prompt.trim() || isSending}
-                            className={`p-2.5 rounded-lg flex items-center justify-center transition-all duration-300 ${
-                                prompt.trim() && !isSending ? 'bg-gradient-to-tr from-purple-600 to-pink-600 hover:shadow-lg hover:shadow-purple-500/30 text-white transform hover:scale-105' : 'bg-white/10 text-slate-500 cursor-not-allowed'
-                            }`}
-                        >
-                            {isSending ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
-                        </button>
-                    ) : (
+                    {isRunActive ? (
                         <button
                             onClick={handleStop} 
                             disabled={isCancelling}
@@ -541,6 +535,16 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
                             title="Stop Run"
                         >
                            {isCancelling ? <Loader2 size={20} className="animate-spin" /> : <StopCircle size={20} />}
+                        </button>
+                    ) : (
+                        <button
+                            onClick={handleStart}
+                            disabled={!prompt.trim() || isSending}
+                            className={`p-2.5 rounded-lg flex items-center justify-center transition-all duration-300 ${
+                                prompt.trim() && !isSending ? 'bg-gradient-to-tr from-purple-600 to-pink-600 hover:shadow-lg hover:shadow-purple-500/30 text-white transform hover:scale-105' : 'bg-white/10 text-slate-500 cursor-not-allowed'
+                            }`}
+                        >
+                            {isSending ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
                         </button>
                     )}
                 </div>

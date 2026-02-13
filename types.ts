@@ -6,6 +6,7 @@ export enum RunStatus {
   COMPLETED = 'completed',
   FAILED = 'failed',
   RUNNING = 'running', // Generic running state if specific sub-state isn't known
+  CANCELLED = 'cancelled',
 }
 
 export interface Agent {
