@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { api, getSettings } from '../api/heidi';
 import { Agent, AppMode, RunEvent, RunStatus } from '../types';
 import { 
-  Send, Play, Repeat, StopCircle, CheckCircle, AlertCircle, Loader2, PlayCircle, PanelLeft,
-  Sparkles, Cpu, Search, Map, Terminal, Eye, Shield, FileSearch
+  Send, Repeat, StopCircle, CheckCircle, AlertCircle, Loader2, PlayCircle, PanelLeft,
+  Sparkles, Cpu, Search, Map, Terminal, Eye, Shield
 } from 'lucide-react';
 
 interface ChatProps {
@@ -16,7 +16,7 @@ interface ChatProps {
 const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, onToggleSidebar }) => {
   // Config State
   const [prompt, setPrompt] = useState('');
-  const [mode, setMode] = useState<AppMode>(AppMode.RUN); // Default to RUN as per logic
+  const [mode, setMode] = useState<AppMode>(AppMode.RUN); // Default to RUN
   const [executor, setExecutor] = useState('copilot');
   const [maxRetries, setMaxRetries] = useState(2);
   const [dryRun, setDryRun] = useState(false);
@@ -40,6 +40,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
 
   useEffect(() => {
     api.getAgents().then(setAgents).catch(() => {
+      // Fallback if agents endpoint is not ready
       setAgents([{ name: 'copilot', description: 'Default executor' }]);
     });
   }, []);
@@ -125,21 +126,21 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
     try {
       let response;
       if (mode === AppMode.RUN) {
+        // Spec: POST /run { prompt, executor, workdir }
         response = await api.startRun({
           prompt,
           executor,
           workdir: null,
-          dry_run: dryRun,
-          persona: 'default'
+          dry_run: dryRun
         });
       } else {
+        // Spec: POST /loop { task, executor, max_retries, workdir }
         response = await api.startLoop({
           task: prompt,
           executor,
           max_retries: maxRetries,
           workdir: null,
-          dry_run: dryRun,
-          persona: 'default'
+          dry_run: dryRun
         });
       }
 
@@ -161,8 +162,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
       setIsCancelling(true);
       try {
           await api.cancelRun(runId);
-          // Don't reset immediately, wait for poll/stream to catch the cancelled state
-          // or just force a poll now
+          // Don't reset immediately, let polling/SSE catch the status change
           setStatus('cancelling');
       } catch (e) {
           console.error("Cancel failed", e);
@@ -172,13 +172,12 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
   const startStreaming = (id: string) => {
     stopStreaming(); 
     
-    // Check for API Key. EventSource does not support headers, so we MUST use polling if Auth is enabled.
-    const { apiKey } = getSettings();
-    if (apiKey) {
-        console.log("API Key present, defaulting to polling for stream.");
-        startPolling(id);
-        return;
-    }
+    // NOTE: EventSource does not support headers. 
+    // If auth is enabled later, we must use polling or a fetch-based stream reader.
+    // For now, if API key is present in settings (even if not sent), we might prefer polling 
+    // to be safe, OR we assume the SSE endpoint doesn't need auth yet (as per prompt).
+    // Spec says: "GET /runs/{run_id}/stream using EventSource".
+    // Fallback: "Poll every 1s if SSE fails".
 
     const streamUrl = api.getStreamUrl(id);
     
@@ -194,6 +193,8 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
         try {
           const data = JSON.parse(event.data);
           setTranscript((prev) => [...prev, data]);
+          
+          // Optionally update status if event contains it, though usually we poll for definitive status
           if (data.type === 'status') {
              setStatus(data.message); 
           }
@@ -203,6 +204,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
       };
 
       es.onerror = (err) => {
+        // If SSE fails (e.g. 404 or connection error), fall back to polling
         console.warn("SSE Error, switching to polling", err);
         es.close();
         eventSourceRef.current = null;
@@ -218,11 +220,15 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
   const startPolling = (id: string) => {
     if (pollingRef.current) return;
     
-    // Immediate check
     const check = async () => {
       try {
         const details = await api.getRun(id);
-        setTranscript(details.events || []);
+        
+        // Update transcript (deduplication logic might be needed if mixing SSE and polling, 
+        // but simple replacement is safer for polling fallback)
+        if (details.events) {
+            setTranscript(details.events);
+        }
         
         const currentStatus = details.meta?.status || 'unknown';
         setStatus(currentStatus);
@@ -232,7 +238,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
 
         const s = currentStatus.toLowerCase();
         if (s === 'completed' || s === 'failed' || s === 'cancelled') {
-          stopStreaming();
+          stopStreaming(); // Clear the interval
           setIsCancelling(false);
         }
       } catch (err) {
@@ -241,7 +247,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
     };
     
     check();
-    pollingRef.current = setInterval(check, 1500); 
+    pollingRef.current = setInterval(check, 1000); // Poll every 1s
   };
 
   // --- Rendering Helpers ---
@@ -250,7 +256,6 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
     const rawStatus = status || 'idle';
     const s = rawStatus.toLowerCase();
     
-    // Default styling
     let color = "bg-white/5 text-slate-400 border border-white/10";
     let icon = <Loader2 size={14} className="animate-spin text-purple-400" />;
     let label = rawStatus;
@@ -276,30 +281,25 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
       // Granular Running States
       color = "bg-purple-500/10 text-purple-300 border border-purple-500/20 shadow-[0_0_15px_rgba(168,85,247,0.15)]";
       
-      if (s.includes('generating')) {
-         label = "Generating Response...";
-         icon = <Sparkles size={14} className="animate-pulse" />;
-      } else if (s.includes('processing')) {
-         label = "Processing...";
-         icon = <Cpu size={14} className="animate-pulse" />;
-      } else if (s.includes('searching')) {
-         label = "Searching Info...";
-         icon = <Search size={14} className="animate-pulse" />;
-      } else if (s.includes('planning')) {
-         label = "Planning Task...";
+      if (s.includes('planning')) {
+         label = "Planning...";
          icon = <Map size={14} />;
       } else if (s.includes('executing')) {
-         label = "Executing Code...";
+         label = "Executing...";
          icon = <Terminal size={14} />;
       } else if (s.includes('reviewing')) {
-         label = "Reviewing Output...";
+         label = "Reviewing...";
          icon = <Eye size={14} />;
       } else if (s.includes('auditing')) {
-         label = "Auditing Results...";
+         label = "Auditing...";
          icon = <Shield size={14} />;
       } else if (s.includes('retrying')) {
           label = "Retrying...";
           icon = <Repeat size={14} className="animate-spin-slow" />;
+      } else {
+          // Generic running
+          label = "Running...";
+          icon = <Cpu size={14} className="animate-pulse" />;
       }
     }
 
@@ -550,9 +550,5 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
     </div>
   );
 };
-
-const CircleIcon = () => (
-    <div className="w-2 h-2 rounded-full bg-slate-600" />
-);
 
 export default Chat;

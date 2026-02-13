@@ -15,14 +15,20 @@ export const saveSettings = (settings: SettingsState) => {
 };
 
 const getHeaders = (customApiKey?: string) => {
-  const { apiKey } = getSettings();
-  const key = customApiKey !== undefined ? customApiKey : apiKey;
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
   };
+  
+  // NOTE: Backend currently has no auth. Sending this header might cause CORS issues if not allowed.
+  // Uncomment when backend supports X-Heidi-Key.
+  /*
+  const { apiKey } = getSettings();
+  const key = customApiKey !== undefined ? customApiKey : apiKey;
   if (key) {
     headers['X-Heidi-Key'] = key;
   }
+  */
+  
   return headers;
 };
 
@@ -53,14 +59,13 @@ export const api = {
   },
 
   startRun: async (payload: RunRequest): Promise<RunResponse> => {
-    // Ensure payload matches strict requirement: { prompt, executor, workdir }
-    // We add persona as default per instructions
+    // Spec: POST /run { "prompt": "text", "executor": "copilot", "workdir": null }
     const body = {
       prompt: payload.prompt,
-      executor: payload.executor,
+      executor: payload.executor || 'copilot',
       workdir: payload.workdir || null,
-      persona: payload.persona || 'default',
-      ...(payload.dry_run ? { dry_run: true } : {}) 
+      // Optional: Include dry_run only if true
+      ...(payload.dry_run ? { dry_run: true } : {})
     };
 
     const res = await fetch(`${getBaseUrl()}/run`, {
@@ -76,13 +81,13 @@ export const api = {
   },
 
   startLoop: async (payload: LoopRequest): Promise<RunResponse> => {
-    // Ensure payload matches strict requirement: { task, executor, max_retries, workdir }
+    // Spec: POST /loop { "task": "text", "executor": "copilot", "max_retries": 2, "workdir": null }
     const body = {
       task: payload.task,
-      executor: payload.executor,
-      max_retries: payload.max_retries,
+      executor: payload.executor || 'copilot',
+      max_retries: payload.max_retries ?? 2,
       workdir: payload.workdir || null,
-      persona: payload.persona || 'default',
+      // Optional: Include dry_run only if true
       ...(payload.dry_run ? { dry_run: true } : {})
     };
 
@@ -99,13 +104,14 @@ export const api = {
   },
 
   cancelRun: async (runId: string): Promise<void> => {
-    const res = await fetch(`${getBaseUrl()}/runs/${runId}/cancel`, {
-      method: 'POST',
-      headers: getHeaders(),
-    });
-    // We don't throw if it fails, just try best effort
-    if (!res.ok) {
-        console.warn("Failed to cancel run via backend");
+    // Best effort cancellation
+    try {
+      await fetch(`${getBaseUrl()}/runs/${runId}/cancel`, {
+        method: 'POST',
+        headers: getHeaders(),
+      });
+    } catch (e) {
+      console.warn("Failed to cancel run via backend", e);
     }
   },
 
