@@ -95,7 +95,21 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
 
     try {
       const details = await api.getRun(id);
-      setTranscript(details.events || []);
+      
+      // Merge meta prompt into events if missing for consistent display
+      let events = details.events || [];
+      const userMsg = details.meta?.prompt || details.meta?.task;
+      const hasUserPromptEvent = events.some(e => e.type === 'user_prompt');
+      
+      if (userMsg && !hasUserPromptEvent) {
+          events = [{
+              type: 'user_prompt',
+              message: userMsg,
+              ts: details.meta?.created_at || new Date().toISOString()
+          }, ...events];
+      }
+
+      setTranscript(events);
       setStatus(details.meta?.status || 'unknown');
       setMode(details.meta?.task ? AppMode.LOOP : AppMode.RUN);
       setExecutor(details.meta?.executor || 'copilot');
@@ -118,16 +132,25 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
   const handleStart = async () => {
     if (!prompt.trim()) return;
 
+    const currentPrompt = prompt;
     resetChat();
+    
+    // Add user prompt to transcript immediately
+    setTranscript([{
+        type: 'user_prompt',
+        message: currentPrompt,
+        ts: new Date().toISOString()
+    }]);
+
     setIsSending(true);
     setStatus('initiating');
 
     try {
       let response;
       if (mode === AppMode.RUN) {
-        response = await api.startRun({ prompt, executor, workdir: null, dry_run: dryRun });
+        response = await api.startRun({ prompt: currentPrompt, executor, workdir: null, dry_run: dryRun });
       } else {
-        response = await api.startLoop({ task: prompt, executor, max_retries: maxRetries, workdir: null, dry_run: dryRun });
+        response = await api.startLoop({ task: currentPrompt, executor, max_retries: maxRetries, workdir: null, dry_run: dryRun });
       }
 
       setRunId(response.run_id);
@@ -200,7 +223,14 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
                if (!jsonStr) continue;
                try {
                  const data = JSON.parse(jsonStr);
-                 setTranscript((prev) => [...prev, data]);
+                 setTranscript((prev) => {
+                    // Avoid duplicating user_prompt if backend sends it and we already added it locally
+                    if (data.type === 'user_prompt') {
+                        const exists = prev.some(e => e.type === 'user_prompt' && e.message === data.message);
+                        if (exists) return prev;
+                    }
+                    return [...prev, data];
+                 });
                  if (data.type === 'status') {
                    setStatus(data.message);
                  }
@@ -223,7 +253,20 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
     const check = async () => {
       try {
         const details = await api.getRun(id);
-        if (details.events) setTranscript(details.events);
+        
+        // Merge meta prompt for polling too
+        let events = details.events || [];
+        const userMsg = details.meta?.prompt || details.meta?.task;
+        const hasUserPromptEvent = events.some(e => e.type === 'user_prompt');
+        if (userMsg && !hasUserPromptEvent) {
+             events = [{
+                type: 'user_prompt',
+                message: userMsg,
+                ts: details.meta?.created_at || new Date().toISOString()
+            }, ...events];
+        }
+
+        setTranscript(events);
         setStatus(details.meta?.status || 'unknown');
         if (details.result) setResult(details.result);
         if (details.error) setError(details.error);
@@ -288,15 +331,13 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
       {/* 1. Navbar */}
       <div className="flex items-center justify-between px-4 md:px-6 py-4 border-b border-white/5 bg-black/40 backdrop-blur-xl z-10 shrink-0">
         <div className="flex items-center gap-3 md:gap-4 overflow-hidden">
-           {!isSidebarOpen && (
-               <button 
-                onClick={onToggleSidebar} 
-                className="text-slate-400 hover:text-white transition-colors p-2 -ml-2 rounded-lg hover:bg-white/5 active:scale-95 transform duration-100"
-                aria-label="Toggle Sidebar"
-               >
-                   <PanelLeft size={20} />
-               </button>
-           )}
+            <button 
+            onClick={onToggleSidebar} 
+            className="text-slate-400 hover:text-white transition-colors p-2 -ml-2 rounded-lg hover:bg-white/5 active:scale-95 transform duration-100"
+            aria-label="Toggle Sidebar"
+            >
+                <PanelLeft size={20} />
+            </button>
            <div className="flex flex-col min-w-0">
                {renderStatusBadge()}
            </div>
