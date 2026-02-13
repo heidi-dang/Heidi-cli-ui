@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ai, checkApiKeySelection, db, StoredChat } from '../api/gemini';
 import { GenerateContentResponse, Modality, LiveServerMessage } from '@google/genai';
-import { PanelLeft, Mic, Send, Image as ImageIcon, Video, Wand2, Sparkles, Loader2, Volume2, Search, MapPin, Play, StopCircle, RefreshCw, Upload, Download, Users, Phone, PhoneOff, Video as VideoIcon, History, Plus, Trash2, MessageSquare, X } from 'lucide-react';
+import { PanelLeft, Mic, Send, Image as ImageIcon, Video, Wand2, Sparkles, Loader2, Volume2, Search, MapPin, Play, StopCircle, RefreshCw, Upload, Download, Users, Phone, PhoneOff, Video as VideoIcon, History, Plus, Trash2, MessageSquare, X, ChevronDown } from 'lucide-react';
 import { useCollaboration, Peer } from '../hooks/useCollaboration';
 
 interface GeminiProps {
@@ -33,10 +33,14 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
   // Chat State
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [prompt, setPrompt] = useState('');
+  
+  // Config State
+  const [models, setModels] = useState<{id: string, name: string}[]>([]);
+  const [selectedModel, setSelectedModel] = useState('gemini-3-pro-preview');
   const [isThinking, setIsThinking] = useState(false);
-  const [isFast, setIsFast] = useState(false);
   const [useSearch, setUseSearch] = useState(false);
   const [useMaps, setUseMaps] = useState(false);
+  
   const [isProcessing, setIsProcessing] = useState(false);
   const [attachment, setAttachment] = useState<{ type: 'image' | 'video'; data: string; mimeType: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -61,6 +65,18 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
   const [isLiveConnected, setIsLiveConnected] = useState(false);
   const [liveStatus, setLiveStatus] = useState('Disconnected');
   const [liveVolume, setLiveVolume] = useState(0);
+
+  // --- Initialization ---
+  useEffect(() => {
+    // Define supported models
+    const supportedModels = [
+        { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro' },
+        { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash' },
+        { id: 'gemini-2.5-flash-latest', name: 'Gemini 2.5 Flash' },
+        { id: 'gemini-2.5-flash-lite-latest', name: 'Gemini 2.5 Lite' },
+    ];
+    setModels(supportedModels);
+  }, []);
 
   // --- Persistence Logic ---
 
@@ -186,25 +202,31 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
     setIsProcessing(true);
 
     try {
-      let model = 'gemini-3-pro-preview';
+      let model = selectedModel;
       let config: any = {};
 
-      // Determine model based on flags and attachment
-      if (isFast) {
-        model = 'gemini-2.5-flash-lite';
-      } else if (isThinking) {
-        model = 'gemini-3-pro-preview';
+      // Logic to determine config based on flags
+      if (isThinking) {
+        // Thinking budget for reasoning models
         config.thinkingConfig = { thinkingBudget: 32768 };
-      } else if (useSearch) {
-        model = 'gemini-3-flash-preview';
+      } 
+      
+      if (useSearch) {
         config.tools = [{ googleSearch: {} }];
       } else if (useMaps) {
-        model = 'gemini-2.5-flash';
         config.tools = [{ googleMaps: {} }];
-      } else if (currentAttachment && currentAttachment.type === 'video') {
-         model = 'gemini-3-pro-preview'; // Video understanding
-      } else if (currentAttachment && currentAttachment.type === 'image') {
-         model = 'gemini-3-pro-preview'; // Image understanding
+        // Maps grounding is only supported in Gemini 2.5 series
+        if (!model.includes('2.5')) {
+            model = 'gemini-2.5-flash-latest';
+        }
+      }
+
+      // Special handling for video attachments (Understanding)
+      if (currentAttachment && currentAttachment.type === 'video') {
+         // Prefer Pro models for best video understanding if not already selected
+         if (model.includes('lite') || model.includes('flash-latest')) {
+             model = 'gemini-3-pro-preview';
+         }
       }
 
       // Prepare contents
@@ -713,12 +735,21 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
                        <div className="max-w-4xl mx-auto space-y-3">
                            {/* Config Toggles */}
                            <div className="flex items-center justify-between">
-                               <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
+                               <div className="flex gap-2 overflow-x-auto no-scrollbar py-1 items-center">
+                                    {/* Model Selector */}
+                                    <div className="relative">
+                                        <select
+                                            value={selectedModel}
+                                            onChange={(e) => setSelectedModel(e.target.value)}
+                                            className="appearance-none bg-white/5 border border-white/10 rounded-full pl-3 pr-8 py-1.5 text-[11px] font-bold text-slate-300 focus:border-indigo-500 outline-none cursor-pointer uppercase tracking-wide hover:bg-white/10 transition-colors"
+                                        >
+                                            {models.map(m => <option key={m.id} value={m.id} className="bg-[#1f1a38] text-slate-200">{m.name}</option>)}
+                                        </select>
+                                        <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                                    </div>
+
                                     <button onClick={() => setIsThinking(!isThinking)} className={`px-3 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wide border transition-all ${isThinking ? 'bg-purple-500/20 border-purple-500 text-purple-300 shadow-[0_0_10px_rgba(168,85,247,0.2)]' : 'border-white/10 text-slate-400 hover:border-white/20'}`}>
                                         <div className="flex items-center gap-1.5"><Wand2 size={12} /> Deep Think</div>
-                                    </button>
-                                    <button onClick={() => setIsFast(!isFast)} className={`px-3 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wide border transition-all ${isFast ? 'bg-yellow-500/20 border-yellow-500 text-yellow-300 shadow-[0_0_10px_rgba(234,179,8,0.2)]' : 'border-white/10 text-slate-400 hover:border-white/20'}`}>
-                                        <div className="flex items-center gap-1.5"><Loader2 size={12} /> Fast</div>
                                     </button>
                                     <button onClick={() => setUseSearch(!useSearch)} className={`px-3 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wide border transition-all ${useSearch ? 'bg-blue-500/20 border-blue-500 text-blue-300 shadow-[0_0_10px_rgba(59,130,246,0.2)]' : 'border-white/10 text-slate-400 hover:border-white/20'}`}>
                                         <div className="flex items-center gap-1.5"><Search size={12} /> Search</div>

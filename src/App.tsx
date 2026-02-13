@@ -2,51 +2,33 @@ import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Chat from './pages/Chat';
 import Settings from './pages/Settings';
-import Gemini from './pages/Gemini';
-import Login from './pages/Login';
-import AuthCallback from './pages/AuthCallback';
-import { api } from './api/heidi';
-import { User } from './types';
-import { Loader2 } from 'lucide-react';
 
 function App() {
-  const [currentView, setCurrentView] = useState<'chat' | 'settings' | 'gemini'>('chat');
+  const [currentView, setCurrentView] = useState<'chat' | 'settings'>('chat');
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [refreshSidebarTrigger, setRefreshSidebarTrigger] = useState(0);
-  const [user, setUser] = useState<User | null>(null);
-  const [isAuthLoading, setIsAuthLoading] = useState(true);
   
-  // Routing State
-  const [path, setPath] = useState(window.location.pathname);
-
-  // Sidebar State
+  // Default to open on desktop, closed on mobile
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
-  // Monitor screen size & Auth boot
+  // Monitor screen size
   useEffect(() => {
-    const init = async () => {
-        // 1. Check Auth
-        const me = await api.getMe();
-        setUser(me);
-        setIsAuthLoading(false);
-    };
-    init();
-
     const handleResize = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
       if (!mobile && !isSidebarOpen) {
+          // Optional: Auto-open when resizing to desktop
           // setIsSidebarOpen(true); 
       }
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [isSidebarOpen]);
 
-  const handleNavigate = (view: 'chat' | 'settings' | 'gemini') => {
+  const handleNavigate = (view: 'chat' | 'settings') => {
     setCurrentView(view);
-    if (view === 'settings' || view === 'gemini') {
+    if (view === 'settings') {
         setSelectedRunId(null);
     }
     if (isMobile) setIsSidebarOpen(false);
@@ -68,32 +50,8 @@ function App() {
       setRefreshSidebarTrigger(prev => prev + 1);
   };
 
-  const handleLogout = async () => {
-      await api.logout();
-      setUser(null);
-      window.location.href = '/login';
-  };
-
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
-  // Simple Router Logic
-  if (path === '/auth/callback') {
-      return <AuthCallback />;
-  }
-
-  if (path === '/login') {
-      return <Login />;
-  }
-
-  if (isAuthLoading) {
-      return (
-          <div className="flex h-screen w-full items-center justify-center bg-[#0f0c29] text-white">
-              <Loader2 className="animate-spin text-indigo-500" size={32} />
-          </div>
-      );
-  }
-
-  // Main App Layout
   return (
     <div className="flex h-screen w-full bg-[#0f0c29] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#240b36] via-[#0f0c29] to-[#000000] text-slate-100 overflow-hidden font-sans selection:bg-pink-500/30">
       
@@ -120,17 +78,13 @@ function App() {
         <div className="w-full h-full md:border-r md:border-white/5 bg-black/20">
             <Sidebar 
                 currentView={currentView}
-                onNavigate={(view) => {
-                    if (view === 'chat') handleNewChat();
-                    else handleNavigate(view);
-                }}
+                onNavigate={handleNavigate}
+                onNewChat={handleNewChat}
                 onSelectRun={handleSelectRun}
                 selectedRunId={selectedRunId}
                 refreshTrigger={refreshSidebarTrigger}
                 isOpen={isSidebarOpen}
                 onToggle={toggleSidebar}
-                user={user}
-                onLogout={handleLogout}
             />
         </div>
       </aside>
@@ -139,11 +93,6 @@ function App() {
       <main className="flex-1 flex flex-col relative h-full min-w-0 bg-gradient-to-b from-transparent to-black/20">
         {currentView === 'settings' ? (
             <Settings 
-                isSidebarOpen={isSidebarOpen}
-                onToggleSidebar={toggleSidebar}
-            />
-        ) : currentView === 'gemini' ? (
-            <Gemini 
                 isSidebarOpen={isSidebarOpen}
                 onToggleSidebar={toggleSidebar}
             />

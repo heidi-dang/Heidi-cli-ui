@@ -1,21 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { RunSummary, User } from '../types';
+import { RunSummary } from '../types';
 import { api } from '../api/heidi';
-import { RefreshCw, Settings, MessageSquare, Circle, CheckCircle, XCircle, AlertTriangle, PanelLeft, User as UserIcon, Plus, Sparkles, LogOut } from 'lucide-react';
+import { RefreshCw, Settings, MessageSquare, Circle, CheckCircle, XCircle, AlertTriangle, PanelLeft, User, Plus } from 'lucide-react';
 
 interface SidebarProps {
-  currentView: 'chat' | 'settings' | 'gemini';
-  onNavigate: (view: 'chat' | 'settings' | 'gemini') => void;
+  currentView: 'chat' | 'settings';
+  onNavigate: (view: 'chat' | 'settings') => void;
+  onNewChat: () => void;
   onSelectRun: (runId: string) => void;
   selectedRunId: string | null;
   refreshTrigger: number;
   isOpen: boolean;
   onToggle: () => void;
-  user: User | null;
-  onLogout: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onSelectRun, selectedRunId, refreshTrigger, isOpen, onToggle, user, onLogout }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onNewChat, onSelectRun, selectedRunId, refreshTrigger, isOpen, onToggle }) => {
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -47,10 +46,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onSelectRun,
   };
 
   return (
-    <div className="w-full flex flex-col h-full bg-black/40 backdrop-blur-md border-r border-white/5">
+    <div className="w-full flex flex-col h-full bg-black/40 backdrop-blur-md">
       {/* Header */}
       <div className="p-4 pt-5 pb-4 border-b border-white/5 flex items-center justify-between gap-3 shrink-0">
-        <div className="flex items-center gap-3 overflow-hidden group cursor-pointer" onClick={() => onNavigate('chat')}>
+        <div className="flex items-center gap-3 overflow-hidden group cursor-pointer" onClick={onNewChat}>
             <div className="w-9 h-9 relative flex-shrink-0 flex items-center justify-center bg-gradient-to-tr from-pink-500 to-purple-600 rounded-xl shadow-lg shadow-purple-900/40 p-0.5 group-hover:shadow-pink-900/40 transition-shadow duration-500">
                 <img src="/heidiai_logo.png" alt="Heidi AI" className="w-full h-full object-cover rounded-[10px]" />
             </div>
@@ -62,9 +61,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onSelectRun,
             </div>
         </div>
         
+        {/* Mobile close button (redundant on desktop but useful for interactions) */}
         <button 
             onClick={onToggle}
-            className="text-slate-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-white/5 md:hidden"
+            className="md:hidden text-slate-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-white/5"
             title="Close Sidebar"
         >
             <PanelLeft size={18} />
@@ -74,31 +74,17 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onSelectRun,
       {/* Navigation */}
       <div className="p-3 space-y-1 shrink-0">
         <button
-          onClick={() => onNavigate('chat')}
+          onClick={onNewChat}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group ${
             currentView === 'chat' && !selectedRunId 
             ? 'bg-gradient-to-r from-purple-500/10 to-pink-500/10 text-white border border-purple-500/20 shadow-sm' 
             : 'text-slate-400 hover:bg-white/5 hover:text-slate-200 border border-transparent'
           }`}
         >
-          <div className={`p-1.5 rounded-lg transition-colors ${currentView === 'chat' && !selectedRunId ? 'bg-purple-500/20 text-purple-300' : 'bg-white/5 text-slate-500 group-hover:text-slate-300'}`}>
+          <div className={`p-1.5 rounded-lg ${currentView === 'chat' && !selectedRunId ? 'bg-purple-500/20 text-purple-300' : 'bg-white/5 text-slate-500 group-hover:text-slate-300'}`}>
              <Plus size={16} />
           </div>
           <span className="text-sm font-medium">New Chat</span>
-        </button>
-        
-        <button
-          onClick={() => onNavigate('gemini')}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group ${
-            currentView === 'gemini' 
-            ? 'bg-gradient-to-r from-purple-500/10 to-pink-500/10 text-white border border-purple-500/20 shadow-sm' 
-            : 'text-slate-400 hover:bg-white/5 hover:text-slate-200 border border-transparent'
-          }`}
-        >
-          <div className={`p-1.5 rounded-lg transition-colors ${currentView === 'gemini' ? 'bg-purple-500/20 text-purple-300' : 'bg-white/5 text-slate-500 group-hover:text-slate-300'}`}>
-             <Sparkles size={16} />
-          </div>
-          <span className="text-sm font-medium">Gemini Studio</span>
         </button>
 
         <button
@@ -109,7 +95,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onSelectRun,
             : 'text-slate-400 hover:bg-white/5 hover:text-slate-200 border border-transparent'
           }`}
         >
-          <div className={`p-1.5 rounded-lg transition-colors ${currentView === 'settings' ? 'bg-purple-500/20 text-purple-300' : 'bg-white/5 text-slate-500 group-hover:text-slate-300'}`}>
+          <div className={`p-1.5 rounded-lg ${currentView === 'settings' ? 'bg-purple-500/20 text-purple-300' : 'bg-white/5 text-slate-500 group-hover:text-slate-300'}`}>
             <Settings size={16} />
           </div>
           <span className="text-sm font-medium">Settings</span>
@@ -131,7 +117,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onSelectRun,
 
         <div className="flex-1 overflow-y-auto px-3 pb-4 space-y-1 custom-scrollbar">
             {error ? (
-            <div className="px-2 py-6 text-center bg-red-500/5 rounded-xl border border-red-500/10 mx-2 animate-in fade-in zoom-in">
+            <div className="px-2 py-6 text-center bg-red-500/5 rounded-xl border border-red-500/10 mx-2">
                 <div className="flex justify-center mb-2 text-red-400/80">
                 <AlertTriangle size={18} /> 
                 </div>
@@ -182,38 +168,14 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onSelectRun,
       
       {/* Footer */}
       <div className="p-4 border-t border-white/5 mt-auto bg-black/20 shrink-0">
-          <div className="flex items-center justify-between gap-3 w-full p-2.5 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors cursor-default group">
-            <div className="flex items-center gap-3 overflow-hidden">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold shadow-inner overflow-hidden">
-                {user?.avatar_url ? (
-                    <img src={user.avatar_url} alt="avatar" className="w-full h-full object-cover" />
-                ) : (
-                    <UserIcon size={16} />
-                )}
-                </div>
-                <div className="flex flex-col items-start overflow-hidden min-w-0">
-                <span className="text-xs font-bold text-slate-200 truncate w-full text-left">{user?.username || 'Guest User'}</span>
-                <span className="text-[10px] text-slate-500 truncate w-full">{user?.provider ? `via ${user.provider}` : 'heidi-local'}</span>
-                </div>
+          <div className="flex items-center gap-3 w-full p-2.5 rounded-xl bg-white/5 border border-white/5">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold shadow-inner">
+              <User size={16} />
             </div>
-            
-            {user && (
-                <button 
-                    onClick={onLogout}
-                    className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                    title="Sign Out"
-                >
-                    <LogOut size={16} />
-                </button>
-            )}
-            {!user && (
-                <button 
-                    onClick={() => window.location.href = '/login'}
-                    className="p-1.5 text-slate-500 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors opacity-0 group-hover:opacity-100 text-[10px] font-bold uppercase"
-                >
-                    Login
-                </button>
-            )}
+            <div className="flex flex-col items-start overflow-hidden min-w-0">
+              <span className="text-xs font-bold text-slate-200 truncate w-full text-left">Local User</span>
+              <span className="text-[10px] text-slate-500 truncate w-full">heidi-local</span>
+            </div>
           </div>
       </div>
     </div>
