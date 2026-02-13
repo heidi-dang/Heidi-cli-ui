@@ -110,7 +110,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
       }
 
       setTranscript(events);
-      setStatus(details.meta?.status || 'unknown');
+      setStatus(details.meta?.status || RunStatus.RUNNING);
       setMode(details.meta?.task ? AppMode.LOOP : AppMode.RUN);
       setExecutor(details.meta?.executor || 'copilot');
       if (details.result) setResult(details.result);
@@ -267,7 +267,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
         }
 
         setTranscript(events);
-        setStatus(details.meta?.status || 'unknown');
+        setStatus(details.meta?.status || RunStatus.RUNNING);
         if (details.result) setResult(details.result);
         if (details.error) setError(details.error);
         const s = (details.meta?.status || '').toLowerCase();
@@ -331,13 +331,15 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
       {/* 1. Navbar */}
       <div className="flex items-center justify-between px-4 md:px-6 py-4 border-b border-white/5 bg-black/40 backdrop-blur-xl z-10 shrink-0">
         <div className="flex items-center gap-3 md:gap-4 overflow-hidden">
-            <button 
-            onClick={onToggleSidebar} 
-            className="text-slate-400 hover:text-white transition-colors p-2 -ml-2 rounded-lg hover:bg-white/5 active:scale-95 transform duration-100"
-            aria-label="Toggle Sidebar"
-            >
-                <PanelLeft size={20} />
-            </button>
+           {!isSidebarOpen && (
+               <button 
+                onClick={onToggleSidebar} 
+                className="text-slate-400 hover:text-white transition-colors p-2 -ml-2 rounded-lg hover:bg-white/5 active:scale-95 transform duration-100"
+                aria-label="Toggle Sidebar"
+               >
+                   <PanelLeft size={20} />
+               </button>
+           )}
            <div className="flex flex-col min-w-0">
                {renderStatusBadge()}
            </div>
