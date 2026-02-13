@@ -350,20 +350,6 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
       {/* 2. Transcript */}
       <div className="flex-1 overflow-y-auto px-4 md:px-6 py-6 space-y-6 scroll-smooth custom-scrollbar w-full max-w-5xl mx-auto">
         
-        {/* User Bubble */}
-        {(prompt || initialRunId) && (runId || transcript.length > 0) && (
-            <div className="flex justify-end animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="max-w-[85%] md:max-w-[70%] bg-gradient-to-br from-indigo-600 to-purple-700 text-white px-5 py-4 rounded-3xl rounded-tr-sm shadow-xl shadow-purple-900/10 border border-white/10">
-                    <div className="text-[10px] text-indigo-200 mb-1 font-bold uppercase opacity-70 tracking-wide">
-                        {mode === AppMode.LOOP ? 'Task' : 'Prompt'}
-                    </div>
-                    <div className="whitespace-pre-wrap leading-relaxed text-sm md:text-base">
-                        {prompt || (transcript.find(e => e.type === 'user_prompt')?.message) || 'Run started...'}
-                    </div>
-                </div>
-            </div>
-        )}
-
         {/* Empty State */}
         {!runId && transcript.length === 0 && !isSending && (
           <div className="h-full flex flex-col items-center justify-center text-center px-4 pb-20 opacity-0 animate-in fade-in duration-700 delay-100 fill-mode-forwards">
@@ -382,6 +368,23 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
         <div className="space-y-4">
             {transcript.map((event, idx) => {
                 if (!event.message) return null;
+                
+                // User Prompt styling
+                if (event.type === 'user_prompt') {
+                    return (
+                        <div key={idx} className="flex justify-end animate-in fade-in slide-in-from-bottom-2 duration-300">
+                            <div className="max-w-[85%] md:max-w-[70%] bg-gradient-to-br from-indigo-600 to-purple-700 text-white px-5 py-4 rounded-3xl rounded-tr-sm shadow-xl shadow-purple-900/10 border border-white/10">
+                                <div className="text-[10px] text-indigo-200 mb-1 font-bold uppercase opacity-70 tracking-wide">
+                                    {mode === AppMode.LOOP ? 'Task' : 'Prompt'}
+                                </div>
+                                <div className="whitespace-pre-wrap leading-relaxed text-sm md:text-base font-sans">
+                                    {event.message}
+                                </div>
+                            </div>
+                        </div>
+                    );
+                }
+
                 const isError = event.type === 'error';
                 return (
                     <div key={idx} className="flex gap-3 md:gap-4 max-w-full md:max-w-[90%] animate-in fade-in slide-in-from-bottom-2 duration-300">
