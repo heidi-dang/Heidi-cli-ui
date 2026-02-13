@@ -14,17 +14,21 @@ const Settings: React.FC<SettingsProps> = ({ isSidebarOpen, onToggleSidebar }) =
   const [msg, setMsg] = useState('');
 
   useEffect(() => {
+    // 1. Load from localStorage
     const current = getSettings();
     setBaseUrl(current.baseUrl);
     setApiKey(current.apiKey);
-    // Explicitly check connection using loaded values without saving
+
+    // 2. Check connection using the loaded values.
+    // CRITICAL: Do NOT call saveSettings() here. 
+    // We only want to read on mount, not write back (which risks overwriting with defaults if read fails).
     checkConnection(current.baseUrl, current.apiKey);
   }, []);
 
   const checkConnection = async (url: string, key: string) => {
     setStatus('checking');
     try {
-      // Pass params directly to api.health to avoid using potentially stale local storage
+      // Pass params directly to api.health to avoid relying on state or local storage inside the helper
       await api.health(url, key);
       setStatus('connected');
       setMsg('Successfully connected to Heidi backend.');
@@ -35,7 +39,7 @@ const Settings: React.FC<SettingsProps> = ({ isSidebarOpen, onToggleSidebar }) =
   };
 
   const handleSave = () => {
-    // Only save when user explicitly clicks save
+    // 3. Only save when user explicitly clicks "Save & Connect"
     saveSettings({ baseUrl, apiKey });
     checkConnection(baseUrl, apiKey);
   };
