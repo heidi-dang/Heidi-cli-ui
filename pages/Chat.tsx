@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api, getSettings } from '../api/heidi';
 import { Agent, AppMode, RunEvent, RunStatus } from '../types';
-import { Send, Play, Repeat, StopCircle, CheckCircle, AlertCircle, Loader2, PlayCircle, PanelLeft } from 'lucide-react';
+import { 
+  Send, Play, Repeat, StopCircle, CheckCircle, AlertCircle, Loader2, PlayCircle, PanelLeft,
+  Sparkles, Cpu, Search, Map, Terminal, Eye, Shield, FileSearch
+} from 'lucide-react';
 
 interface ChatProps {
   initialRunId?: string | null;
@@ -117,6 +120,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
 
     resetChat();
     setIsSending(true);
+    setStatus('initiating');
 
     try {
       let response;
@@ -243,9 +247,13 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
   // --- Rendering Helpers ---
 
   const renderStatusBadge = () => {
-    const s = status.toLowerCase();
+    const rawStatus = status || 'idle';
+    const s = rawStatus.toLowerCase();
+    
+    // Default styling
     let color = "bg-white/5 text-slate-400 border border-white/10";
     let icon = <Loader2 size={14} className="animate-spin text-purple-400" />;
+    let label = rawStatus;
 
     if (s === 'completed') {
       color = "bg-green-500/10 text-green-300 border border-green-500/20";
@@ -254,20 +262,51 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
       color = "bg-red-500/10 text-red-300 border border-red-500/20";
       icon = <AlertCircle size={14} />;
     } else if (s === 'idle') {
-        color = "bg-white/5 text-slate-400 border border-white/10";
-        icon = <CircleIcon />;
-    } else if (s === 'cancelling' || s === 'cancelled') {
-        color = "bg-orange-500/10 text-orange-300 border border-orange-500/20";
-        icon = <StopCircle size={14} />;
+      color = "bg-white/5 text-slate-400 border border-white/10";
+      icon = <div className="w-2 h-2 rounded-full bg-slate-600" />;
+      label = "Idle";
+    } else if (s.includes('cancelling') || s.includes('cancelled')) {
+      color = "bg-orange-500/10 text-orange-300 border border-orange-500/20";
+      icon = <StopCircle size={14} />;
+    } else if (s.includes('initiating')) {
+      color = "bg-blue-500/10 text-blue-300 border border-blue-500/20";
+      icon = <Loader2 size={14} className="animate-spin" />;
+      label = "Initiating...";
     } else {
-       // Running states
-       color = "bg-purple-500/10 text-purple-300 border border-purple-500/20";
+      // Granular Running States
+      color = "bg-purple-500/10 text-purple-300 border border-purple-500/20 shadow-[0_0_15px_rgba(168,85,247,0.15)]";
+      
+      if (s.includes('generating')) {
+         label = "Generating Response...";
+         icon = <Sparkles size={14} className="animate-pulse" />;
+      } else if (s.includes('processing')) {
+         label = "Processing...";
+         icon = <Cpu size={14} className="animate-pulse" />;
+      } else if (s.includes('searching')) {
+         label = "Searching Info...";
+         icon = <Search size={14} className="animate-pulse" />;
+      } else if (s.includes('planning')) {
+         label = "Planning Task...";
+         icon = <Map size={14} />;
+      } else if (s.includes('executing')) {
+         label = "Executing Code...";
+         icon = <Terminal size={14} />;
+      } else if (s.includes('reviewing')) {
+         label = "Reviewing Output...";
+         icon = <Eye size={14} />;
+      } else if (s.includes('auditing')) {
+         label = "Auditing Results...";
+         icon = <Shield size={14} />;
+      } else if (s.includes('retrying')) {
+          label = "Retrying...";
+          icon = <Repeat size={14} className="animate-spin-slow" />;
+      }
     }
 
     return (
-      <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium uppercase tracking-wider backdrop-blur-md ${color}`}>
+      <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider backdrop-blur-md transition-all duration-300 ${color}`}>
         {icon}
-        {s}
+        <span className="truncate max-w-[180px]">{label}</span>
       </div>
     );
   };
@@ -359,7 +398,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
                     <div className="w-10 h-10 flex-shrink-0" />
                     <div className="flex items-center gap-2 text-purple-400/70 text-sm bg-purple-900/10 px-3 py-1.5 rounded-full border border-purple-500/10">
                         <Loader2 size={14} className="animate-spin" />
-                        <span>Thinking...</span>
+                        <span>{status.includes('running') ? 'Thinking...' : status}</span>
                     </div>
                 </div>
             )}

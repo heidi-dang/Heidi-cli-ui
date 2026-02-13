@@ -4,16 +4,13 @@ import Chat from './pages/Chat';
 import Settings from './pages/Settings';
 
 function App() {
-  const [currentView, setCurrentView] = useState<'chat' | 'settings' | 'gemini'>('chat');
+  const [currentView, setCurrentView] = useState<'chat' | 'settings'>('chat');
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [refreshSidebarTrigger, setRefreshSidebarTrigger] = useState(0);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
-  const handleNavigate = (view: 'chat' | 'settings' | 'gemini') => {
+  const handleNavigate = (view: 'chat' | 'settings') => {
     setCurrentView(view);
-    if (view === 'chat' && currentView !== 'chat') {
-        // Just switching back to chat view, potentially keep context
-    }
     if (view === 'settings') {
         setSelectedRunId(null);
     }
@@ -44,7 +41,7 @@ function App() {
                 currentView={currentView}
                 onNavigate={(view) => {
                     if (view === 'chat') handleNewChat();
-                    else handleNavigate(view);
+                    else handleNavigate(view as 'chat' | 'settings');
                 }}
                 onSelectRun={handleSelectRun}
                 selectedRunId={selectedRunId}

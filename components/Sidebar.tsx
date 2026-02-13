@@ -4,8 +4,8 @@ import { api } from '../api/heidi';
 import { RefreshCw, Settings, MessageSquare, Circle, CheckCircle, XCircle, AlertTriangle, PanelLeft, User } from 'lucide-react';
 
 interface SidebarProps {
-  currentView: 'chat' | 'settings' | 'gemini';
-  onNavigate: (view: 'chat' | 'settings' | 'gemini') => void;
+  currentView: 'chat' | 'settings';
+  onNavigate: (view: 'chat' | 'settings') => void;
   onSelectRun: (runId: string) => void;
   selectedRunId: string | null;
   refreshTrigger: number;

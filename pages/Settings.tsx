@@ -17,14 +17,14 @@ const Settings: React.FC<SettingsProps> = ({ isSidebarOpen, onToggleSidebar }) =
     const current = getSettings();
     setBaseUrl(current.baseUrl);
     setApiKey(current.apiKey);
-    // Pass current values directly to avoid closure stale state issues or overwriting storage
+    // Explicitly check connection using loaded values without saving
     checkConnection(current.baseUrl, current.apiKey);
   }, []);
 
   const checkConnection = async (url: string, key: string) => {
     setStatus('checking');
     try {
-      // Test connection using the provided params without saving to localStorage yet
+      // Pass params directly to api.health to avoid using potentially stale local storage
       await api.health(url, key);
       setStatus('connected');
       setMsg('Successfully connected to Heidi backend.');
@@ -35,6 +35,7 @@ const Settings: React.FC<SettingsProps> = ({ isSidebarOpen, onToggleSidebar }) =
   };
 
   const handleSave = () => {
+    // Only save when user explicitly clicks save
     saveSettings({ baseUrl, apiKey });
     checkConnection(baseUrl, apiKey);
   };
