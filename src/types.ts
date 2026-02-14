@@ -46,6 +46,13 @@ export interface RunEvent {
   details?: any;
 }
 
+export interface RunUsage {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
+}
+
 export interface RunDetails {
   run_id: string;
   meta: {
@@ -58,6 +65,7 @@ export interface RunDetails {
   events: RunEvent[];
   result?: string;
   error?: string;
+  usage?: RunUsage;
 }
 
 export interface RunSummary {
@@ -66,6 +74,7 @@ export interface RunSummary {
   task?: string; // or prompt
   executor?: string;
   created_at?: string;
+  usage?: RunUsage;
 }
 
 export enum AppMode {

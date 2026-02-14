@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { RunSummary } from '../types';
 import { api } from '../api/heidi';
-import { RefreshCw, Settings, Circle, CheckCircle, XCircle, AlertTriangle, PanelLeft, User, Plus, History, ChevronRight, Sparkles, X } from 'lucide-react';
+import { RefreshCw, Settings, Circle, CheckCircle, XCircle, AlertTriangle, PanelLeft, User, Plus, History, ChevronRight, Sparkles, X, Layers, Coins } from 'lucide-react';
 
 interface SidebarProps {
   currentView: 'chat' | 'settings' | 'gemini';
@@ -151,9 +151,25 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onNewChat, o
                         </span>
                         {getStatusIcon(run.status)}
                     </div>
-                    <div className="text-xs font-medium line-clamp-2 leading-relaxed opacity-90 pr-2">
+                    <div className="text-xs font-medium line-clamp-2 leading-relaxed opacity-90 pr-2 mb-1.5">
                         {run.task || run.executor || 'Untitled Run'}
                     </div>
+                    
+                    {/* Run Stats */}
+                    {run.usage && (
+                        <div className="flex items-center gap-3 mt-1 relative z-10 opacity-60 group-hover:opacity-100 transition-opacity">
+                             <div className="flex items-center gap-1 text-[10px] font-mono text-slate-400">
+                                <Layers size={10} className="text-purple-400" />
+                                <span>{run.usage.total_tokens >= 1000 ? (run.usage.total_tokens/1000).toFixed(1) + 'k' : run.usage.total_tokens}</span>
+                             </div>
+                             {run.usage.cost_usd > 0 && (
+                                <div className="flex items-center gap-1 text-[10px] font-mono text-emerald-400">
+                                    <Coins size={10} />
+                                    <span>${run.usage.cost_usd.toFixed(4)}</span>
+                                </div>
+                             )}
+                        </div>
+                    )}
                     
                     {/* Hover Chevron */}
                     <div className={`absolute right-2 top-1/2 -translate-y-1/2 opacity-0 -translate-x-2 transition-all duration-300 ${selectedRunId === run.run_id ? 'opacity-100 translate-x-0 text-purple-400' : 'group-hover:opacity-100 group-hover:translate-x-0 text-slate-500'}`}>

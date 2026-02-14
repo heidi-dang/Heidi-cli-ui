@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api, getSettings } from '../api/heidi';
-import { Agent, AppMode, RunEvent, RunStatus } from '../types';
+import { Agent, AppMode, RunEvent, RunStatus, RunUsage } from '../types';
 import { 
   Send, StopCircle, CheckCircle, AlertCircle, Loader2, PanelLeft,
-  Sparkles, Cpu, Map, Terminal, Eye, Shield, ArrowRight, CornerDownLeft, Clock
+  Sparkles, Cpu, Map, Terminal, Eye, Shield, ArrowRight, CornerDownLeft, Clock,
+  Coins, Layers, Zap
 } from 'lucide-react';
 
 interface ChatProps {
@@ -28,6 +29,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
   const [transcript, setTranscript] = useState<RunEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
+  const [usage, setUsage] = useState<RunUsage | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
 
@@ -80,6 +82,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
     setStatus('idle');
     setResult(null);
     setError(null);
+    setUsage(null);
     setPrompt('');
     setIsCancelling(false);
   };
@@ -101,6 +104,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
     setTranscript([]); 
     setError(null);
     setResult(null);
+    setUsage(null);
 
     try {
       const details = await api.getRun(id);
@@ -124,6 +128,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
       setExecutor(details.meta?.executor || 'copilot');
       if (details.result) setResult(details.result);
       if (details.error) setError(details.error);
+      if (details.usage) setUsage(details.usage);
 
       if (
         details.meta?.status !== RunStatus.COMPLETED &&
@@ -243,6 +248,10 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
                  if (data.type === 'status') {
                    setStatus(data.message);
                  }
+                 // If the SSE event contains usage info (depends on backend implementation)
+                 if (data.usage) {
+                   setUsage(data.usage);
+                 }
                } catch (e) {
                  console.warn("Error parsing SSE JSON chunk", jsonStr);
                }
@@ -278,6 +287,8 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
         setStatus(details.meta?.status || RunStatus.RUNNING);
         if (details.result) setResult(details.result);
         if (details.error) setError(details.error);
+        if (details.usage) setUsage(details.usage);
+        
         const s = (details.meta?.status || '').toLowerCase();
         if (['completed', 'failed', 'cancelled'].includes(s)) {
           stopStreaming();
@@ -346,7 +357,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
                    <PanelLeft size={20} />
                </button>
            )}
-           <div className="flex items-center gap-3 overflow-hidden">
+           <div className="flex items-center gap-3 overflow-hidden flex-1">
                {renderStatusBadge()}
                {runId && (
                    <span className="hidden sm:flex items-center gap-1.5 text-[10px] font-mono text-slate-500 bg-white/5 px-2 py-1 rounded-md">
@@ -355,6 +366,21 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
                    </span>
                )}
            </div>
+
+           {/* Metrics Display */}
+           {usage && (
+             <div className="flex items-center gap-3 bg-white/5 px-3 py-1.5 rounded-lg border border-white/5 animate-in fade-in slide-in-from-top-2 duration-500 hidden sm:flex">
+                <div className="flex items-center gap-1.5 text-xs font-mono text-slate-300" title={`Input: ${usage.input_tokens} | Output: ${usage.output_tokens}`}>
+                   <Layers size={14} className="text-purple-400" />
+                   <span>{usage.total_tokens?.toLocaleString() || 0}</span>
+                </div>
+                <div className="w-px h-3 bg-white/10"></div>
+                <div className="flex items-center gap-1.5 text-xs font-mono text-emerald-300" title="Cost (USD)">
+                   <Coins size={14} />
+                   <span>${(usage.cost_usd || 0).toFixed(4)}</span>
+                </div>
+             </div>
+           )}
         </div>
       </div>
 
@@ -472,61 +498,78 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
             
             {/* Mode & Config Bar - Horizontal Scroll on Mobile */}
             {!isRunActive && (
-                <div className="flex items-center gap-2 px-1 pt-1 pb-3 overflow-x-auto no-scrollbar mask-linear-fade">
-                    {/* Toggle */}
-                    <div className="flex bg-white/5 rounded-lg p-0.5 border border-white/5 shrink-0">
-                        <button 
-                            onClick={() => setMode(AppMode.RUN)}
-                            className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wide transition-all ${mode === AppMode.RUN ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
-                        >
-                            Run
-                        </button>
-                        <button 
-                            onClick={() => setMode(AppMode.LOOP)}
-                            className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wide transition-all ${mode === AppMode.LOOP ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
-                        >
-                            Loop
-                        </button>
-                    </div>
-
-                    <div className="w-px h-6 bg-white/5 mx-1 shrink-0"></div>
-
-                     {/* Executor */}
-                    <div className="relative group shrink-0">
-                        <select 
-                            value={executor} 
-                            onChange={(e) => setExecutor(e.target.value)}
-                            className="appearance-none bg-white/5 border border-white/10 rounded-lg pl-2 pr-7 py-1.5 text-xs text-slate-300 focus:border-purple-500 outline-none hover:bg-white/10 transition-colors cursor-pointer font-medium"
-                        >
-                            {agents.map(a => <option key={a.name} value={a.name} className="bg-gray-900">{a.name}</option>)}
-                        </select>
-                        <Terminal size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
-                    </div>
-
-                    {/* Retries */}
-                    {mode === AppMode.LOOP && (
-                         <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 shrink-0 animate-in fade-in zoom-in-95">
-                            <span className="text-[10px] uppercase font-bold text-slate-500">Retries</span>
-                            <input 
-                                type="number" 
-                                min={0} 
-                                max={10} 
-                                value={maxRetries} 
-                                onChange={(e) => setMaxRetries(parseInt(e.target.value))}
-                                className="w-6 bg-transparent text-center text-xs text-white focus:outline-none font-bold"
-                            />
+                <div className="flex flex-col gap-2">
+                   {/* Usage Stats from previous run (visible when idle) */}
+                   {usage && !isRunActive && (
+                       <div className="flex items-center gap-4 px-4 py-2 mx-2 bg-white/5 rounded-lg border border-white/5 animate-in fade-in slide-in-from-bottom-2">
+                           <span className="text-[10px] font-bold uppercase text-slate-500 tracking-wider">Last Run</span>
+                           <div className="flex items-center gap-1.5 text-xs font-mono text-slate-300">
+                               <Layers size={12} className="text-purple-400" />
+                               <span>{usage.total_tokens?.toLocaleString()}</span>
+                           </div>
+                           <div className="flex items-center gap-1.5 text-xs font-mono text-emerald-300">
+                               <Coins size={12} />
+                               <span>${(usage.cost_usd || 0).toFixed(4)}</span>
+                           </div>
+                       </div>
+                   )}
+                   
+                   <div className="flex items-center gap-2 px-1 pt-1 pb-3 overflow-x-auto no-scrollbar mask-linear-fade">
+                        {/* Toggle */}
+                        <div className="flex bg-white/5 rounded-lg p-0.5 border border-white/5 shrink-0">
+                            <button 
+                                onClick={() => setMode(AppMode.RUN)}
+                                className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wide transition-all ${mode === AppMode.RUN ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                            >
+                                Run
+                            </button>
+                            <button 
+                                onClick={() => setMode(AppMode.LOOP)}
+                                className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wide transition-all ${mode === AppMode.LOOP ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+                            >
+                                Loop
+                            </button>
                         </div>
-                    )}
 
-                    <label className="flex items-center gap-2 cursor-pointer group bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 hover:border-purple-500/50 transition-colors shrink-0">
-                        <input 
-                            type="checkbox" 
-                            checked={dryRun} 
-                            onChange={(e) => setDryRun(e.target.checked)}
-                            className="w-3 h-3 rounded bg-white/10 border-white/20 text-purple-500 focus:ring-0 cursor-pointer"
-                        />
-                        <span className="text-[10px] font-bold uppercase text-slate-400 group-hover:text-purple-300 transition-colors">Dry Run</span>
-                    </label>
+                        <div className="w-px h-6 bg-white/5 mx-1 shrink-0"></div>
+
+                        {/* Executor */}
+                        <div className="relative group shrink-0">
+                            <select 
+                                value={executor} 
+                                onChange={(e) => setExecutor(e.target.value)}
+                                className="appearance-none bg-white/5 border border-white/10 rounded-lg pl-2 pr-7 py-1.5 text-xs text-slate-300 focus:border-purple-500 outline-none hover:bg-white/10 transition-colors cursor-pointer font-medium"
+                            >
+                                {agents.map(a => <option key={a.name} value={a.name} className="bg-gray-900">{a.name}</option>)}
+                            </select>
+                            <Terminal size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                        </div>
+
+                        {/* Retries */}
+                        {mode === AppMode.LOOP && (
+                            <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 shrink-0 animate-in fade-in zoom-in-95">
+                                <span className="text-[10px] uppercase font-bold text-slate-500">Retries</span>
+                                <input 
+                                    type="number" 
+                                    min={0} 
+                                    max={10} 
+                                    value={maxRetries} 
+                                    onChange={(e) => setMaxRetries(parseInt(e.target.value))}
+                                    className="w-6 bg-transparent text-center text-xs text-white focus:outline-none font-bold"
+                                />
+                            </div>
+                        )}
+
+                        <label className="flex items-center gap-2 cursor-pointer group bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 hover:border-purple-500/50 transition-colors shrink-0">
+                            <input 
+                                type="checkbox" 
+                                checked={dryRun} 
+                                onChange={(e) => setDryRun(e.target.checked)}
+                                className="w-3 h-3 rounded bg-white/10 border-white/20 text-purple-500 focus:ring-0 cursor-pointer"
+                            />
+                            <span className="text-[10px] font-bold uppercase text-slate-400 group-hover:text-purple-300 transition-colors">Dry Run</span>
+                        </label>
+                    </div>
                 </div>
             )}
 
