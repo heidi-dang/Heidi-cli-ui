@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { api, generatePKCE } from '../api/heidi';
+import { api } from '../api/heidi';
 import { AuthProvider } from '../types';
 import { Github, LogIn, Loader2, AlertCircle } from 'lucide-react';
 
@@ -20,17 +20,11 @@ export default function Login() {
         setLoggingInProvider(providerId);
         setError('');
         try {
-            const { verifier, challenge } = await generatePKCE();
-            // Store verifier for callback
-            localStorage.setItem('pkce_verifier', verifier);
-            
-            // Redirect URI matches the current origin
-            const redirectUri = window.location.origin + '/auth/callback';
-            
-            const response = await api.loginStart(providerId, redirectUri, challenge);
-            
-            if (response.authorization_url) {
-                window.location.href = response.authorization_url;
+            // Get the redirect URL from backend
+            const authUrl = await api.getLoginUrl(providerId);
+            if (authUrl) {
+                // Redirect browser to the provider's login page
+                window.location.href = authUrl;
             } else {
                 throw new Error("No authorization URL returned");
             }
@@ -90,7 +84,7 @@ export default function Login() {
                                 ) : (
                                     getProviderIcon(p.id)
                                 )}
-                                <span>Continue with {p.name}</span>
+                                <span>Sign in with {p.name}</span>
                             </button>
                         ))
                     )}

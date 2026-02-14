@@ -206,13 +206,14 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
         headers['X-Heidi-Key'] = apiKey;
     }
 
+    // getStreamUrl now appends ?key=<key> if apiKey exists
     const streamUrl = api.getStreamUrl(id);
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
     try {
       const response = await fetch(streamUrl, {
-        headers,
+        headers, // We still send headers for fetch-based streaming
         signal: controller.signal,
         credentials: 'include' // Important for cookie-based auth
       });
@@ -371,15 +372,13 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
       {/* 1. Navbar */}
       <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-white/5 bg-[#0a0a0a]/80 backdrop-blur-xl z-20 shrink-0 sticky top-0">
         <div className="flex items-center gap-3 overflow-hidden w-full">
-           {!isSidebarOpen && (
-               <button 
-                onClick={onToggleSidebar} 
-                className="text-slate-400 hover:text-white transition-colors p-2 -ml-2 rounded-lg hover:bg-white/5 active:bg-white/10"
-                aria-label="Open Menu"
-               >
-                   <PanelLeft size={20} />
-               </button>
-           )}
+           <button 
+            onClick={onToggleSidebar} 
+            className={`text-slate-400 hover:text-white transition-colors p-2 -ml-2 rounded-lg hover:bg-white/5 active:bg-white/10`}
+            aria-label="Toggle Sidebar"
+           >
+               <PanelLeft size={20} />
+           </button>
            <div className="flex items-center gap-3 overflow-hidden flex-1">
                {renderStatusBadge()}
                {runId && (

@@ -90,9 +90,16 @@ export interface SettingsState {
 export interface User {
   id: string;
   username: string;
+  name?: string;
   email?: string;
   avatar_url?: string;
   provider: string;
+}
+
+export interface AuthStatus {
+  authenticated: boolean;
+  user?: User;
+  message?: string;
 }
 
 export interface AuthProvider {
@@ -100,4 +107,11 @@ export interface AuthProvider {
   name: string;
   icon?: string;
   url?: string; // Optional direct url if not using flow
+}
+
+export interface IntegrationStatus {
+  provider: string;
+  connected: boolean;
+  details?: string;
+  last_checked?: string;
 }

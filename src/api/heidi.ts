@@ -1,4 +1,4 @@
-import { Agent, LoopRequest, RunDetails, RunRequest, RunResponse, RunSummary, SettingsState, AuthProvider } from '../types';
+import { Agent, LoopRequest, RunDetails, RunRequest, RunResponse, RunSummary, SettingsState, AuthProvider, AuthStatus, IntegrationStatus } from '../types';
 
 // Use relative path by default to leverage Vite proxy
 const DEFAULT_BASE_URL = '/api';
@@ -36,47 +36,11 @@ const getBaseUrl = (customUrl?: string) => {
   return url.replace(/\/$/, '');
 };
 
-// PKCE Helper Functions
-function generateRandomString(length: number) {
-  let text = "";
-  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
-  for (let i = 0; i < length; i++) {
-    text += possible.charAt(Math.floor(Math.random() * possible.length));
-  }
-  return text;
-}
-
-async function pkceChallengeFromVerifier(v: string) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(v);
-  const hash = await crypto.subtle.digest('SHA-256', data);
-  return base64UrlEncode(new Uint8Array(hash));
-}
-
-function base64UrlEncode(a: Uint8Array) {
-  let str = "";
-  const bytes = new Uint8Array(a);
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    str += String.fromCharCode(bytes[i]);
-  }
-  return btoa(str)
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
-export const generatePKCE = async () => {
-  const verifier = generateRandomString(128);
-  const challenge = await pkceChallengeFromVerifier(verifier);
-  return { verifier, challenge };
-};
-
 // Helper for requests with auth
 const safeFetch = async (url: string, options: RequestInit = {}) => {
   const res = await fetch(url, {
     ...options,
-    credentials: 'include', // Ensure cookies are sent if used
+    credentials: 'include', // Ensure cookies are sent (CRITICAL for Auth)
   });
   return res;
 };
@@ -94,6 +58,75 @@ export const api = {
     return res.json();
   },
 
+  // Auth Methods
+  getAuthStatus: async (): Promise<AuthStatus> => {
+    try {
+      const res = await safeFetch(`${getBaseUrl()}/auth/status`, { headers: getHeaders() });
+      if (res.status === 401) return { authenticated: false };
+      if (!res.ok) return { authenticated: false };
+      return res.json();
+    } catch (e) {
+      return { authenticated: false };
+    }
+  },
+
+  getAuthProviders: async (): Promise<AuthProvider[]> => {
+    try {
+      const res = await safeFetch(`${getBaseUrl()}/auth/providers`, { headers: getHeaders() });
+      if (!res.ok) return [];
+      return res.json();
+    } catch (e) {
+      console.warn("Could not fetch auth providers", e);
+      return [];
+    }
+  },
+
+  getLoginUrl: async (providerId: string): Promise<string> => {
+    // We call the backend to get the redirect URL
+    const res = await safeFetch(`${getBaseUrl()}/auth/login/${providerId}`, {
+      method: 'GET',
+      headers: getHeaders(),
+    });
+
+    if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`Failed to get login URL: ${txt}`);
+    }
+    const data = await res.json();
+    return data.auth_url || data.authorization_url;
+  },
+
+  loginFinish: async (code: string, verifier: string): Promise<void> => {
+      const res = await safeFetch(`${getBaseUrl()}/auth/callback`, {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({ code, verifier })
+      });
+      if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || 'Login failed');
+      }
+  },
+
+  logout: async (): Promise<void> => {
+    await safeFetch(`${getBaseUrl()}/auth/logout`, {
+        method: 'POST',
+        headers: getHeaders()
+    });
+  },
+
+  // Integration Methods
+  checkOpenCodeStatus: async (): Promise<IntegrationStatus> => {
+      try {
+          const res = await safeFetch(`${getBaseUrl()}/opencode/status`, { headers: getHeaders() });
+          if (!res.ok) return { provider: 'opencode', connected: false, details: 'Status check failed' };
+          return res.json();
+      } catch (e) {
+          return { provider: 'opencode', connected: false, details: 'Backend unreachable' };
+      }
+  },
+
+  // Agent & Run Methods
   getAgents: async (): Promise<Agent[]> => {
     try {
       const res = await safeFetch(`${getBaseUrl()}/agents`, { headers: getHeaders() });
@@ -172,55 +205,12 @@ export const api = {
   },
 
   getStreamUrl: (runId: string): string => {
-    return(`${getBaseUrl()}/runs/${runId}/stream`);
+    const base = `${getBaseUrl()}/runs/${runId}/stream`;
+    const { apiKey } = getSettings();
+    if (apiKey) {
+        // Append API Key for EventSource support (which cannot set headers)
+        return `${base}?key=${encodeURIComponent(apiKey)}`;
+    }
+    return base;
   },
-
-  getAuthProviders: async (): Promise<AuthProvider[]> => {
-    try {
-      const res = await safeFetch(`${getBaseUrl()}/auth/providers`, { headers: getHeaders() });
-      if (!res.ok) return [];
-      return res.json();
-    } catch (e) {
-      console.warn("Could not fetch auth providers", e);
-      return [];
-    }
-  },
-
-  loginStart: async (providerId: string, redirectUri: string, challenge: string): Promise<{ authorization_url: string }> => {
-    const res = await safeFetch(`${getBaseUrl()}/auth/login/${providerId}`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({
-        redirect_uri: redirectUri,
-        code_challenge: challenge,
-        code_challenge_method: 'S256'
-      }),
-    });
-    if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(`Failed to start login: ${txt}`);
-    }
-    return res.json();
-  },
-
-  loginFinish: async (code: string, verifier: string): Promise<any> => {
-    const res = await safeFetch(`${getBaseUrl()}/auth/callback`, {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({
-        code,
-        code_verifier: verifier
-      }),
-    });
-    if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(`Failed to complete login: ${txt}`);
-    }
-    const data = await res.json();
-    if (data.api_key) {
-        const current = getSettings();
-        saveSettings({ ...current, apiKey: data.api_key });
-    }
-    return data;
-  }
 };

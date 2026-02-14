@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { RunSummary } from '../types';
+import { RunSummary, User } from '../types';
 import { api } from '../api/heidi';
-import { RefreshCw, Settings, Circle, CheckCircle, XCircle, AlertTriangle, PanelLeft, User, Plus, History, ChevronRight, Sparkles, X, Layers, Coins } from 'lucide-react';
+import { RefreshCw, Settings, Circle, CheckCircle, XCircle, AlertTriangle, PanelLeft, User as UserIcon, Plus, History, ChevronRight, Sparkles, X, Layers, Coins, LogOut } from 'lucide-react';
 
 interface SidebarProps {
   currentView: 'chat' | 'settings' | 'gemini';
@@ -12,9 +12,10 @@ interface SidebarProps {
   refreshTrigger: number;
   isOpen: boolean;
   onToggle: () => void;
+  user: User | null;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onNewChat, onSelectRun, selectedRunId, refreshTrigger, isOpen, onToggle }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onNewChat, onSelectRun, selectedRunId, refreshTrigger, isOpen, onToggle, user }) => {
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
@@ -36,6 +37,15 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onNewChat, o
   useEffect(() => {
     fetchRuns();
   }, [refreshTrigger]);
+
+  const handleLogout = async () => {
+      try {
+          await api.logout();
+          window.location.reload();
+      } catch (e) {
+          console.error("Logout failed", e);
+      }
+  };
 
   const getStatusIcon = (status: string) => {
     const s = status?.toLowerCase() || '';
@@ -207,14 +217,33 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onNewChat, o
             <span className="text-sm font-medium">Settings</span>
           </button>
           
-          <div className="flex items-center gap-3 w-full p-3 rounded-xl bg-white/5 border border-white/5">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold shadow-inner shrink-0">
-              <User size={14} />
+          <div className="flex items-center justify-between w-full p-2.5 rounded-xl bg-white/5 border border-white/5 gap-2">
+            <div className="flex items-center gap-3 overflow-hidden">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold shadow-inner shrink-0 overflow-hidden">
+                    {user?.avatar_url ? (
+                        <img src={user.avatar_url} alt={user.username} className="w-full h-full object-cover" />
+                    ) : (
+                        <UserIcon size={14} />
+                    )}
+                </div>
+                <div className="flex flex-col items-start overflow-hidden min-w-0">
+                    <span className="text-xs font-bold text-slate-200 truncate w-full text-left">
+                        {user ? (user.name || user.username) : 'Local User'}
+                    </span>
+                    <span className="text-[10px] text-slate-500 truncate w-full capitalize">
+                        {user ? user.provider : 'Guest'}
+                    </span>
+                </div>
             </div>
-            <div className="flex flex-col items-start overflow-hidden min-w-0">
-              <span className="text-xs font-bold text-slate-200 truncate w-full text-left">Local User</span>
-              <span className="text-[10px] text-slate-500 truncate w-full">heidi-local</span>
-            </div>
+            {user && (
+                <button 
+                    onClick={handleLogout}
+                    className="p-1.5 text-slate-400 hover:text-red-400 hover:bg-white/5 rounded-lg transition-colors"
+                    title="Sign Out"
+                >
+                    <LogOut size={16} />
+                </button>
+            )}
           </div>
       </div>
     </div>

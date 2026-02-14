@@ -4,8 +4,8 @@ import Chat from './pages/Chat';
 import Settings from './pages/Settings';
 import Gemini from './pages/Gemini';
 import Login from './pages/Login';
-import AuthCallback from './pages/AuthCallback';
 import { api } from './api/heidi';
+import { User } from './types';
 import { AlertTriangle, RefreshCw, LogIn } from 'lucide-react';
 
 function App() {
@@ -15,27 +15,42 @@ function App() {
   const [isBackendOffline, setIsBackendOffline] = useState(false);
   const [isUnauthorized, setIsUnauthorized] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
   
-  // Basic routing for Auth Callback
-  const isAuthCallback = window.location.pathname === '/auth/callback';
-
   // Default to open on desktop, closed on mobile
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
-  const checkBackend = async () => {
+  const checkStatus = async () => {
     setIsChecking(true);
     try {
+      // 1. Check health
       await api.health();
       setIsBackendOffline(false);
-      setIsUnauthorized(false);
+
+      // 2. Check auth
+      const auth = await api.getAuthStatus();
+      if (auth.authenticated && auth.user) {
+          setUser(auth.user);
+          setIsUnauthorized(false);
+          // If we were on login page and just got authenticated (e.g. cookie set via redirect), go to chat
+          if (currentView === 'login') {
+              setCurrentView('chat');
+          }
+      } else {
+          setUser(null);
+          // If explicitly unauthorized by health check or auth check
+          // api.health throws if 401, caught below
+          // api.getAuthStatus returns false if 401
+      }
     } catch (e: any) {
       if (e.message === 'Unauthorized') {
           setIsUnauthorized(true);
           setIsBackendOffline(false);
+          setUser(null);
       } else {
           setIsBackendOffline(true);
-          setIsUnauthorized(false);
+          // If offline, we can't be sure about auth, but usually keeps last state or resets
       }
     } finally {
       setIsChecking(false);
@@ -44,23 +59,21 @@ function App() {
 
   // Initial connectivity check
   useEffect(() => {
-    if (!isAuthCallback) {
-        checkBackend();
-    }
-  }, [isAuthCallback]);
+    checkStatus();
+  }, []);
 
   // Monitor screen size
   useEffect(() => {
     const handleResize = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
-      if (!mobile && !isSidebarOpen && !isAuthCallback && currentView !== 'login') {
+      if (!mobile && !isSidebarOpen && currentView !== 'login') {
           // Optional: Auto-open when resizing to desktop
       }
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [isSidebarOpen, isAuthCallback, currentView]);
+  }, [isSidebarOpen, currentView]);
 
   const handleNavigate = (view: 'chat' | 'settings' | 'gemini' | 'login') => {
     setCurrentView(view);
@@ -88,10 +101,6 @@ function App() {
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
-  if (isAuthCallback) {
-      return <AuthCallback />;
-  }
-
   return (
     <div className="flex h-screen w-full bg-[#0f0c29] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#240b36] via-[#0f0c29] to-[#000000] text-slate-100 overflow-hidden font-sans selection:bg-pink-500/30 relative">
       
@@ -103,7 +112,7 @@ function App() {
              <span>Backend not reachable</span>
            </div>
            <button 
-             onClick={checkBackend}
+             onClick={checkStatus}
              disabled={isChecking}
              className="flex items-center gap-1.5 px-3 py-1 bg-white text-red-600 rounded-full text-xs hover:bg-red-50 disabled:opacity-75 transition-colors"
            >
@@ -113,8 +122,8 @@ function App() {
         </div>
       )}
 
-      {/* Unauthorized Banner */}
-      {isUnauthorized && currentView !== 'login' && (
+      {/* Unauthorized Banner - Only show if not already on login page */}
+      {isUnauthorized && currentView !== 'login' && !user && (
         <div className="fixed top-0 left-0 right-0 z-[100] bg-orange-600/90 backdrop-blur-md text-white px-4 py-2 text-sm font-bold flex items-center justify-center gap-4 shadow-xl animate-in slide-in-from-top duration-300">
            <div className="flex items-center gap-2">
              <LogIn size={16} />
@@ -171,13 +180,14 @@ function App() {
                     refreshTrigger={refreshSidebarTrigger}
                     isOpen={isSidebarOpen}
                     onToggle={toggleSidebar}
+                    user={user}
                 />
             </div>
         </aside>
       )}
 
       {/* Main Content Area */}
-      <main className={`flex-1 flex flex-col relative h-full min-w-0 bg-gradient-to-b from-transparent to-black/20 ${(isBackendOffline || isUnauthorized) ? 'pt-8' : ''}`}>
+      <main className={`flex-1 flex flex-col relative h-full min-w-0 bg-gradient-to-b from-transparent to-black/20 ${(isBackendOffline || (isUnauthorized && !user && currentView !== 'login')) ? 'pt-8' : ''}`}>
         {currentView === 'login' ? (
             <Login />
         ) : currentView === 'settings' ? (

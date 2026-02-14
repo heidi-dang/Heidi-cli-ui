@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ai, checkApiKeySelection, db, StoredChat } from '../api/gemini';
+import { ai, checkApiKeySelection } from '../api/gemini';
 import { GenerateContentResponse, Modality, LiveServerMessage } from '@google/genai';
-import { PanelLeft, Mic, Send, Image as ImageIcon, Video, Wand2, Sparkles, Loader2, Volume2, Search, MapPin, Play, StopCircle, RefreshCw, Upload, Download, Users, Phone, PhoneOff, Video as VideoIcon, History, Plus, Trash2, MessageSquare, X, ChevronDown } from 'lucide-react';
+import { PanelLeft, Mic, Send, Image as ImageIcon, Video, Wand2, Sparkles, Loader2, Volume2, Search, MapPin, Play, StopCircle, RefreshCw, Upload, Download, Users, Phone, PhoneOff, Video as VideoIcon } from 'lucide-react';
 import { useCollaboration, Peer } from '../hooks/useCollaboration';
 
 interface GeminiProps {
@@ -25,28 +25,16 @@ type ChatMessage = {
 export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) {
   const [activeTab, setActiveTab] = useState<Tab>('chat');
 
-  // Session State
-  const [sessionId, setSessionId] = useState<string>(() => crypto.randomUUID());
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [savedChats, setSavedChats] = useState<StoredChat[]>([]);
-
   // Chat State
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [prompt, setPrompt] = useState('');
-  
-  // Config State
-  const [models, setModels] = useState<{id: string, name: string}[]>([]);
-  const [selectedModel, setSelectedModel] = useState('gemini-3-pro-preview');
   const [isThinking, setIsThinking] = useState(false);
+  const [isFast, setIsFast] = useState(false);
   const [useSearch, setUseSearch] = useState(false);
   const [useMaps, setUseMaps] = useState(false);
-  
-  // Replaced isProcessing boolean with a status string for granular feedback
-  const [processingStatus, setProcessingStatus] = useState<string | null>(null);
-  
+  const [isProcessing, setIsProcessing] = useState(false);
   const [attachment, setAttachment] = useState<{ type: 'image' | 'video'; data: string; mimeType: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const chatBottomRef = useRef<HTMLDivElement>(null);
 
   // Collaboration State
   const [collabRoomId, setCollabRoomId] = useState('');
@@ -68,87 +56,12 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
   const [liveStatus, setLiveStatus] = useState('Disconnected');
   const [liveVolume, setLiveVolume] = useState(0);
 
-  // --- Initialization ---
-  useEffect(() => {
-    // Define supported models per user request
-    const supportedModels = [
-        { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro' },
-        { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash' },
-        { id: 'gemini-2.5-flash-latest', name: 'Gemini 2.5 Flash' },
-        { id: 'gemini-2.5-flash-lite-latest', name: 'Gemini 2.5 Lite' },
-    ];
-    setModels(supportedModels);
-  }, []);
-
-  // --- Persistence Logic ---
-
-  // Load history list
-  const refreshHistory = async () => {
-    try {
-        const list = await db.listChats();
-        setSavedChats(list);
-    } catch (e) {
-        console.error("Failed to load history", e);
-    }
-  };
-
-  useEffect(() => {
-      refreshHistory();
-  }, [historyOpen]);
-
-  // Auto-scroll
-  useEffect(() => {
-      chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, processingStatus, typingUsers]);
-
-  // Auto-save Effect
-  useEffect(() => {
-    const save = async () => {
-        if (messages.length > 0) {
-            // Use first user message as title, or "New Chat"
-            const firstUserMsg = messages.find(m => m.role === 'user');
-            const title = firstUserMsg ? firstUserMsg.text.slice(0, 40) : 'Untitled Conversation';
-            
-            await db.saveChat({
-                id: sessionId,
-                title: title || 'New Chat',
-                messages,
-                updatedAt: Date.now()
-            });
-        }
-    };
-    const timer = setTimeout(save, 1000);
-    return () => clearTimeout(timer);
-  }, [messages, sessionId]);
-
-  const loadSession = (chat: StoredChat) => {
-      setSessionId(chat.id);
-      setMessages(chat.messages);
-      setHistoryOpen(false);
-  };
-
-  const deleteSession = async (e: React.MouseEvent, id: string) => {
-      e.stopPropagation();
-      await db.deleteChat(id);
-      if (id === sessionId) {
-          handleNewChat();
-      }
-      refreshHistory();
-  };
-
-  const handleNewChat = () => {
-      setSessionId(crypto.randomUUID());
-      setMessages([]);
-      setPrompt('');
-      setAttachment(null);
-      setGeneratedMedia(null);
-      setHistoryOpen(false);
-  };
-
-  // --- Sync Remote Messages ---
+  // Sync Remote Messages
   useEffect(() => {
       if (remoteMessages.length > 0) {
           const lastMsg = remoteMessages[remoteMessages.length - 1];
+          // Check if we already have this message (simple dedup by timestamp/content if needed, but here just append)
+          // Ideally we'd have IDs. For now, we trust the stream.
           const newMsg: ChatMessage = {
               role: 'peer',
               text: lastMsg.text,
@@ -161,11 +74,12 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
       }
   }, [remoteMessages]);
 
-  // --- Typing Broadcast ---
+  // Typing Broadcast
   const handleTyping = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       setPrompt(e.target.value);
       if (activeRoom) {
           broadcastTyping(true);
+          // Debounce stop typing
           const timeout = setTimeout(() => broadcastTyping(false), 2000);
           return () => clearTimeout(timeout);
       }
@@ -200,43 +114,32 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
 
     setPrompt('');
     setAttachment(null);
-    
-    // Determine granular status message
-    let statusMsg = "Generating response...";
-    if (useSearch) statusMsg = "Searching information...";
-    else if (useMaps) statusMsg = "Locating places...";
-    else if (isThinking) statusMsg = "Thinking deeply...";
-    else if (currentAttachment?.type === 'image') statusMsg = "Analyzing image...";
-    else if (currentAttachment?.type === 'video') statusMsg = "Watching video...";
-    
-    setProcessingStatus(statusMsg);
+    setIsProcessing(true);
+
+    // If it's a peer command (optional), we might skip AI? 
+    // But typically user wants AI + Peer.
+    // We proceed to call Gemini.
 
     try {
-      let model = selectedModel;
+      let model = 'gemini-3-pro-preview';
       let config: any = {};
 
-      // Logic to determine config based on flags
-      if (isThinking) {
-        // Thinking budget for reasoning models
+      // Determine model based on flags and attachment
+      if (isFast) {
+        model = 'gemini-2.5-flash-lite';
+      } else if (isThinking) {
+        model = 'gemini-3-pro-preview';
         config.thinkingConfig = { thinkingBudget: 32768 };
-      } 
-      
-      if (useSearch) {
+      } else if (useSearch) {
+        model = 'gemini-3-flash-preview';
         config.tools = [{ googleSearch: {} }];
       } else if (useMaps) {
+        model = 'gemini-2.5-flash';
         config.tools = [{ googleMaps: {} }];
-        // Maps grounding is only supported in Gemini 2.5 series
-        if (!model.includes('2.5')) {
-            model = 'gemini-2.5-flash-latest';
-        }
-      }
-
-      // Special handling for video attachments (Understanding)
-      if (currentAttachment && currentAttachment.type === 'video') {
-         // Prefer Pro models for best video understanding if not already selected
-         if (model.includes('lite') || model.includes('flash-latest')) {
-             model = 'gemini-3-pro-preview';
-         }
+      } else if (currentAttachment && currentAttachment.type === 'video') {
+         model = 'gemini-3-pro-preview'; // Video understanding
+      } else if (currentAttachment && currentAttachment.type === 'image') {
+         model = 'gemini-3-pro-preview'; // Image understanding
       }
 
       // Prepare contents
@@ -245,6 +148,7 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
         contents.parts.unshift({ inlineData: { data: userMsg.image, mimeType: userMsg.mimeType || 'image/jpeg' } });
       }
       if (userMsg.video) {
+        // For inline video (limitations apply to size, usually < 20MB for inline)
         contents.parts.unshift({ inlineData: { data: userMsg.video, mimeType: userMsg.mimeType || 'video/mp4' } });
       }
 
@@ -269,14 +173,21 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
       const aiMsg: ChatMessage = { role: 'model', text: text + groundingInfo };
       setMessages(prev => [...prev, aiMsg]);
       
+      // Optionally broadcast AI response to peers? 
+      // Usually peers run their own AI or see user prompt. 
+      // Let's NOT broadcast AI response to avoid double-generation display on peers if they also had logic.
+      // But if we want shared AI state, we would broadcast it.
+      // For this "Chat in same room" request, assuming human chat + individual AI or shared context.
+      // We will broadcast the AI response so peers see what AI said to ME.
       if (activeRoom) {
+          // Send as a special system message or just text
           broadcastMessage(`[AI Response]: ${text + groundingInfo}`);
       }
 
     } catch (e: any) {
       setMessages(prev => [...prev, { role: 'model', text: `Error: ${e.message}` }]);
     } finally {
-      setProcessingStatus(null);
+      setIsProcessing(false);
     }
   };
 
@@ -296,7 +207,7 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
             reader.readAsDataURL(audioBlob);
             reader.onloadend = async () => {
                 const base64Audio = (reader.result as string).split(',')[1];
-                setProcessingStatus("Processing audio...");
+                setIsProcessing(true);
                 try {
                      const response = await ai.models.generateContent({
                         model: 'gemini-3-flash-preview',
@@ -311,20 +222,20 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
                 } catch (e) {
                     console.error(e);
                 } finally {
-                    setProcessingStatus(null);
+                    setIsProcessing(false);
                 }
             };
             stream.getTracks().forEach(track => track.stop());
         };
 
         mediaRecorder.start();
-        setProcessingStatus("Listening...");
+        setLiveStatus("Recording...");
         setTimeout(() => {
             mediaRecorder.stop();
-        }, 5000); 
+            setLiveStatus("Disconnected");
+        }, 5000); // Record for 5 seconds for simple test
     } catch (e) {
         console.error("Mic permission denied", e);
-        setProcessingStatus(null);
     }
   };
 
@@ -380,6 +291,7 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
                     imageConfig: { aspectRatio, imageSize }
                 }
             });
+            // Find image part
             for (const part of response.candidates?.[0]?.content?.parts || []) {
                 if (part.inlineData) {
                     setGeneratedMedia(`data:${part.inlineData.mimeType};base64,${part.inlineData.data}`);
@@ -393,12 +305,14 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
                  prompt: createPrompt,
                  config: { numberOfVideos: 1, resolution: '720p', aspectRatio: aspectRatio as any }
              });
+             // Polling for video
              while (!operation.done) {
                  await new Promise(r => setTimeout(r, 5000));
                  operation = await ai.operations.getVideosOperation({operation});
              }
              const uri = operation.response?.generatedVideos?.[0]?.video?.uri;
              if (uri) {
+                 // Fetch with API key appended
                  const vidRes = await fetch(`${uri}&key=${process.env.API_KEY}`);
                  const blob = await vidRes.blob();
                  setGeneratedMedia(URL.createObjectURL(blob));
@@ -458,6 +372,7 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
             const source = audioContext.createMediaStreamSource(stream);
             const processor = audioContext.createScriptProcessor(4096, 1, 1);
             
+            // Connect to Live API
             const sessionPromise = ai.live.connect({
                 model: 'gemini-2.5-flash-native-audio-preview-12-2025',
                 callbacks: {
@@ -546,47 +461,15 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
   // --- Render ---
 
   return (
-    <div className="flex flex-col h-full bg-transparent text-white relative overflow-hidden">
-       {/* History Sidebar/Drawer */}
-       <div className={`absolute inset-y-0 right-0 w-80 bg-[#0f0c29]/95 backdrop-blur-xl border-l border-white/10 z-40 transition-transform duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1.0)] transform ${historyOpen ? 'translate-x-0 shadow-2xl' : 'translate-x-full'}`}>
-           <div className="flex items-center justify-between p-5 border-b border-white/10 bg-black/20">
-               <h2 className="font-bold flex items-center gap-2 text-sm text-slate-200"><History size={16} className="text-indigo-400"/> Chat History</h2>
-               <button onClick={() => setHistoryOpen(false)} className="p-1.5 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-colors"><X size={18}/></button>
-           </div>
-           <div className="p-4 space-y-2 overflow-y-auto h-[calc(100%-70px)] custom-scrollbar">
-               <button onClick={handleNewChat} className="w-full flex items-center gap-2 justify-center py-3 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 rounded-xl text-sm font-bold shadow-lg shadow-indigo-900/20 transition-all transform active:scale-95 mb-4">
-                   <Plus size={16} /> New Chat
-               </button>
-               {savedChats.length === 0 && <p className="text-slate-500 text-xs text-center py-4">No saved chats</p>}
-               {savedChats.map(chat => (
-                   <div key={chat.id} className={`group flex items-center justify-between p-3 rounded-xl text-left text-sm transition-all border cursor-pointer ${chat.id === sessionId ? 'bg-indigo-500/10 border-indigo-500/30 text-indigo-200' : 'bg-white/5 border-transparent hover:bg-white/10 text-slate-300 hover:border-white/5'}`} onClick={() => loadSession(chat)}>
-                       <div className="flex-1 truncate mr-2">
-                           <div className="font-medium truncate">{chat.title || 'Untitled'}</div>
-                           <div className="text-[10px] text-slate-500 mt-0.5">{new Date(chat.updatedAt).toLocaleDateString()}</div>
-                       </div>
-                       <button onClick={(e) => deleteSession(e, chat.id)} className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all" title="Delete">
-                           <Trash2 size={14} />
-                       </button>
-                   </div>
-               ))}
-           </div>
-       </div>
-
-       {/* Overlay for mobile history */}
-       {historyOpen && (
-           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm z-30 md:hidden" onClick={() => setHistoryOpen(false)} />
-       )}
-
+    <div className="flex flex-col h-full bg-transparent text-white">
        {/* Header */}
-       <div className="px-6 py-4 flex items-center justify-between bg-black/20 backdrop-blur-md border-b border-white/5 z-20 shrink-0">
+       <div className="px-6 py-4 flex items-center justify-between bg-black/20 backdrop-blur-md border-b border-white/5">
            <div className="flex items-center gap-4">
-            {!isSidebarOpen && (
-                <button onClick={onToggleSidebar} className="text-slate-400 hover:text-white p-2 -ml-2 rounded-lg hover:bg-white/5 transition-colors">
-                    <PanelLeft size={20} />
-                </button>
-            )}
-            <h1 className="text-lg font-bold flex items-center gap-2 tracking-tight">
-                <Sparkles size={20} className="text-indigo-400" />
+            <button onClick={onToggleSidebar} className="text-slate-400 hover:text-white p-1 rounded hover:bg-white/5 transition-colors">
+                <PanelLeft size={20} />
+            </button>
+            <h1 className="text-lg font-bold flex items-center gap-2">
+                <Sparkles size={20} className="text-yellow-400" />
                 Gemini Studio
             </h1>
            </div>
@@ -594,55 +477,45 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
            {/* Collaboration Joiner */}
            <div className="flex items-center gap-2">
              {!activeRoom ? (
-               <div className="hidden md:flex bg-white/5 rounded-lg border border-white/10 p-0.5 transition-colors focus-within:border-indigo-500/50">
+               <div className="flex bg-white/5 rounded-lg border border-white/10 p-0.5">
                   <input 
                     type="text" 
                     placeholder="Room ID" 
                     value={collabRoomId}
                     onChange={(e) => setCollabRoomId(e.target.value)}
-                    className="bg-transparent border-none text-xs px-3 py-1.5 outline-none w-24 text-white placeholder-slate-500"
+                    className="bg-transparent border-none text-xs px-2 py-1 outline-none w-20 text-white placeholder-slate-500"
                   />
                   <button 
                     onClick={() => setActiveRoom(collabRoomId)}
                     disabled={!collabRoomId}
-                    className="px-3 py-1.5 bg-indigo-600/20 text-indigo-300 rounded-md text-xs font-medium hover:bg-indigo-600/30 disabled:opacity-50 transition-colors"
+                    className="px-2 py-1 bg-green-600/20 text-green-300 rounded text-xs hover:bg-green-600/30 disabled:opacity-50"
                   >
                     Join
                   </button>
                </div>
              ) : (
-                <div className="flex items-center gap-2 bg-emerald-900/20 border border-emerald-500/20 rounded-lg px-3 py-1.5">
-                    <span className="text-xs text-emerald-300 font-mono font-bold">Room: {activeRoom}</span>
-                    <div className="w-px h-3 bg-emerald-500/20 mx-1"></div>
-                    <Users size={12} className="text-emerald-300" />
-                    <span className="text-xs text-emerald-300 font-bold">{peers.length + 1}</span>
-                    <button onClick={() => { setActiveRoom(null); setIsInCall(false); endCall(); }} className="ml-2 hover:text-white text-emerald-400 transition-colors" title="Leave Room">
-                        <StopCircle size={14} />
+                <div className="flex items-center gap-2 bg-green-900/20 border border-green-500/20 rounded-lg px-2 py-1">
+                    <span className="text-xs text-green-300 font-mono">Room: {activeRoom}</span>
+                    <div className="w-px h-3 bg-green-500/20"></div>
+                    <Users size={12} className="text-green-300" />
+                    <span className="text-xs text-green-300">{peers.length + 1}</span>
+                    <button onClick={() => { setActiveRoom(null); setIsInCall(false); endCall(); }} className="ml-1 hover:text-white text-green-400">
+                        <StopCircle size={12} />
                     </button>
                 </div>
              )}
            </div>
            
-           <div className="flex items-center gap-3">
-               <div className="flex bg-white/5 rounded-xl p-1">
-                   {(['chat', 'create', 'live'] as Tab[]).map(t => (
-                       <button
-                        key={t}
-                        onClick={() => setActiveTab(t)}
-                        className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${activeTab === t ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}
-                       >
-                           {t.charAt(0).toUpperCase() + t.slice(1)}
-                       </button>
-                   ))}
-               </div>
-               
-               <button 
-                onClick={() => setHistoryOpen(!historyOpen)}
-                className={`p-2.5 rounded-xl transition-all duration-200 ${historyOpen ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white hover:bg-white/10'}`}
-                title="History"
-               >
-                   <History size={20} />
-               </button>
+           <div className="flex bg-white/5 rounded-lg p-1">
+               {(['chat', 'create', 'live'] as Tab[]).map(t => (
+                   <button
+                    key={t}
+                    onClick={() => setActiveTab(t)}
+                    className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${activeTab === t ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                   >
+                       {t.charAt(0).toUpperCase() + t.slice(1)}
+                   </button>
+               ))}
            </div>
        </div>
 
@@ -653,118 +526,88 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
                <div className="h-full flex flex-col relative">
                    {/* Call Grid Overlay */}
                    {isInCall && (
-                     <div className="absolute top-0 left-0 right-0 h-48 bg-black/80 z-20 flex gap-2 p-2 overflow-x-auto border-b border-white/10 custom-scrollbar">
+                     <div className="absolute top-0 left-0 right-0 h-48 bg-black/80 z-20 flex gap-2 p-2 overflow-x-auto border-b border-white/10">
                         {/* Local */}
-                        <div className="relative aspect-video bg-slate-900 rounded-xl overflow-hidden border border-white/10 flex-shrink-0 shadow-lg">
+                        <div className="relative aspect-video bg-slate-900 rounded-lg overflow-hidden border border-white/10 flex-shrink-0">
                            <video 
                               ref={el => { if(el && localStream) el.srcObject = localStream }} 
                               autoPlay muted playsInline 
                               className="w-full h-full object-cover" 
                            />
-                           <div className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/60 backdrop-blur-md rounded text-[10px] font-bold text-white border border-white/10">You</div>
+                           <span className="absolute bottom-1 left-2 text-[10px] bg-black/50 px-1 rounded text-white">You</span>
                         </div>
                         {/* Remotes */}
                         {peers.map(p => p.stream ? (
-                             <div key={p.id} className="relative aspect-video bg-slate-900 rounded-xl overflow-hidden border border-white/10 flex-shrink-0 shadow-lg">
+                             <div key={p.id} className="relative aspect-video bg-slate-900 rounded-lg overflow-hidden border border-white/10 flex-shrink-0">
                                 <video 
                                     ref={el => { if(el && p.stream) el.srcObject = p.stream }} 
                                     autoPlay playsInline 
                                     className="w-full h-full object-cover" 
                                 />
-                                <div className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/60 backdrop-blur-md rounded text-[10px] font-bold text-white border border-white/10">{p.id.slice(0,4)}</div>
+                                <span className="absolute bottom-1 left-2 text-[10px] bg-black/50 px-1 rounded text-white">{p.id.slice(0,4)}</span>
                              </div>
                         ) : null)}
                      </div>
                    )}
 
-                   <div className={`flex-1 overflow-y-auto p-4 md:p-6 space-y-6 custom-scrollbar ${isInCall ? 'pt-52' : ''}`}>
-                       {messages.length === 0 && (
-                           <div className="flex flex-col items-center justify-center h-full text-slate-500 space-y-6 opacity-0 animate-in fade-in zoom-in duration-500">
-                               <div className="w-20 h-20 bg-indigo-500/10 rounded-full flex items-center justify-center border border-indigo-500/20 shadow-[0_0_30px_rgba(99,102,241,0.1)]">
-                                   <Sparkles size={40} className="text-indigo-400" />
-                               </div>
-                               <div className="text-center space-y-2">
-                                   <h3 className="text-xl font-bold text-white">Gemini Studio</h3>
-                                   <p className="text-sm max-w-xs mx-auto">Start a conversation, create media, or collaborate in real-time.</p>
-                               </div>
-                           </div>
-                       )}
+                   <div className={`flex-1 overflow-y-auto p-6 space-y-6 ${isInCall ? 'pt-52' : ''}`}>
                        {messages.map((m, i) => (
-                           <div key={i} className={`flex gap-4 ${m.role === 'user' ? 'justify-end' : ''} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
+                           <div key={i} className={`flex gap-4 ${m.role === 'user' ? 'justify-end' : ''}`}>
                                {(m.role === 'model' || m.role === 'peer') && (
-                                   <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center border shadow-md mt-1 ${m.role === 'peer' ? 'bg-emerald-500/20 border-emerald-500/30' : 'bg-indigo-500/20 border-indigo-500/30'}`}>
-                                       {m.role === 'peer' ? <Users size={14} className="text-emerald-300" /> : <Sparkles size={14} className="text-indigo-300" />}
+                                   <div className={`w-8 h-8 rounded-full flex items-center justify-center border ${m.role === 'peer' ? 'bg-green-500/20 border-green-500/30' : 'bg-indigo-500/20 border-indigo-500/30'}`}>
+                                       {m.role === 'peer' ? <Users size={14} className="text-green-300" /> : <Sparkles size={14} className="text-indigo-300" />}
                                    </div>
                                )}
-                               <div className={`max-w-[85%] md:max-w-[75%] p-4 rounded-2xl shadow-sm ${m.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-white/5 text-slate-200 rounded-tl-sm border border-white/5'}`}>
-                                   {m.role === 'peer' && <div className="text-[10px] font-bold text-emerald-400 mb-1 opacity-80 uppercase tracking-wide">Peer {m.senderId?.slice(0,4)}</div>}
+                               <div className={`max-w-[80%] p-4 rounded-2xl ${m.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-white/5 text-slate-200 rounded-tl-sm border border-white/5'}`}>
+                                   {m.role === 'peer' && <div className="text-[10px] text-green-400 mb-1 opacity-70">Peer {m.senderId?.slice(0,4)}</div>}
                                    {m.image && (
-                                        <div className="mb-3 rounded-xl overflow-hidden border border-white/10 bg-black/20">
-                                            <img 
-                                                src={`data:${m.mimeType || 'image/jpeg'};base64,${m.image}`} 
-                                                alt="uploaded" 
-                                                className="max-h-64 w-auto object-contain" 
-                                            />
-                                        </div>
+                                        <img 
+                                            src={`data:${m.mimeType || 'image/jpeg'};base64,${m.image}`} 
+                                            alt="uploaded" 
+                                            className="mb-2 rounded-lg max-h-60" 
+                                        />
                                    )}
                                    {m.video && (
-                                        <div className="mb-3 rounded-xl overflow-hidden border border-white/10 bg-black/20">
-                                            <video 
-                                                src={`data:${m.mimeType || 'video/mp4'};base64,${m.video}`} 
-                                                controls 
-                                                className="max-h-64 w-auto" 
-                                            />
-                                        </div>
+                                        <video 
+                                            src={`data:${m.mimeType || 'video/mp4'};base64,${m.video}`} 
+                                            controls 
+                                            className="mb-2 rounded-lg max-h-60" 
+                                        />
                                    )}
-                                   <div className="whitespace-pre-wrap text-sm leading-relaxed">{m.text}</div>
+                                   <div className="whitespace-pre-wrap">{m.text}</div>
                                    {m.role === 'model' && (
-                                       <div className="mt-3 pt-2 border-t border-white/5 flex justify-end">
-                                            <button onClick={() => handleTTS(m.text)} className="p-1.5 text-slate-400 hover:text-indigo-300 hover:bg-white/5 rounded-lg transition-colors" title="Read Aloud">
-                                                <Volume2 size={14} />
-                                            </button>
-                                       </div>
+                                       <button onClick={() => handleTTS(m.text)} className="mt-2 text-slate-500 hover:text-indigo-300 transition-colors">
+                                           <Volume2 size={14} />
+                                       </button>
                                    )}
                                </div>
                            </div>
                        ))}
-                       {processingStatus && (
-                           <div className="flex gap-3 items-center text-indigo-300/70 text-sm animate-pulse pl-2">
-                               <div className="w-8 h-8 flex items-center justify-center">
-                                    <Loader2 size={16} className="animate-spin" /> 
-                               </div>
-                               <span>{processingStatus}</span>
+                       {isProcessing && (
+                           <div className="flex gap-2 items-center text-slate-500 text-sm animate-pulse">
+                               <Loader2 size={16} className="animate-spin" /> Gemini is working...
                            </div>
                        )}
                        {typingUsers.length > 0 && (
-                           <div className="text-xs text-slate-500 italic ml-14 animate-pulse">
+                           <div className="text-xs text-slate-500 italic ml-12">
                                {typingUsers.length} person(s) typing...
                            </div>
                        )}
-                       <div ref={chatBottomRef} className="h-4" />
                    </div>
                    
-                   <div className="p-4 md:p-6 bg-black/20 border-t border-white/5 z-10 shrink-0">
-                       <div className="max-w-4xl mx-auto space-y-3">
+                   <div className="p-4 bg-black/20 border-t border-white/5">
+                       <div className="max-w-3xl mx-auto space-y-2">
                            {/* Config Toggles */}
-                           <div className="flex items-center justify-between">
-                               <div className="flex gap-2 overflow-x-auto no-scrollbar py-1 items-center">
-                                    {/* Model Selector */}
-                                    <div className="relative">
-                                        <select
-                                            value={selectedModel}
-                                            onChange={(e) => setSelectedModel(e.target.value)}
-                                            className="appearance-none bg-white/5 border border-white/10 rounded-full pl-3 pr-8 py-1.5 text-[11px] font-bold text-slate-300 focus:border-indigo-500 outline-none cursor-pointer uppercase tracking-wide hover:bg-white/10 transition-colors"
-                                        >
-                                            {models.map(m => <option key={m.id} value={m.id} className="bg-[#1f1a38] text-slate-200">{m.name}</option>)}
-                                        </select>
-                                        <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
-                                    </div>
-
-                                    <button onClick={() => setIsThinking(!isThinking)} className={`px-3 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wide border transition-all ${isThinking ? 'bg-purple-500/20 border-purple-500 text-purple-300 shadow-[0_0_10px_rgba(168,85,247,0.2)]' : 'border-white/10 text-slate-400 hover:border-white/20'}`}>
-                                        <div className="flex items-center gap-1.5"><Wand2 size={12} /> Deep Think</div>
+                           <div className="flex items-center justify-between pb-2">
+                               <div className="flex gap-2 overflow-x-auto">
+                                    <button onClick={() => setIsThinking(!isThinking)} className={`px-3 py-1 rounded-full text-xs border transition-colors flex items-center gap-1 ${isThinking ? 'bg-purple-500/20 border-purple-500 text-purple-300' : 'border-white/10 text-slate-400'}`}>
+                                        <Wand2 size={12} /> Deep Think
                                     </button>
-                                    <button onClick={() => setUseSearch(!useSearch)} className={`px-3 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wide border transition-all ${useSearch ? 'bg-blue-500/20 border-blue-500 text-blue-300 shadow-[0_0_10px_rgba(59,130,246,0.2)]' : 'border-white/10 text-slate-400 hover:border-white/20'}`}>
-                                        <div className="flex items-center gap-1.5"><Search size={12} /> Search</div>
+                                    <button onClick={() => setIsFast(!isFast)} className={`px-3 py-1 rounded-full text-xs border transition-colors flex items-center gap-1 ${isFast ? 'bg-yellow-500/20 border-yellow-500 text-yellow-300' : 'border-white/10 text-slate-400'}`}>
+                                        <Loader2 size={12} /> Fast
+                                    </button>
+                                    <button onClick={() => setUseSearch(!useSearch)} className={`px-3 py-1 rounded-full text-xs border transition-colors flex items-center gap-1 ${useSearch ? 'bg-blue-500/20 border-blue-500 text-blue-300' : 'border-white/10 text-slate-400'}`}>
+                                        <Search size={12} /> Search
                                     </button>
                                </div>
 
@@ -779,7 +622,7 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
                                              setIsInCall(true);
                                          }
                                      }}
-                                     className={`p-2 rounded-full transition-all ${isInCall ? 'bg-red-500/20 text-red-300 border border-red-500/30 animate-pulse' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'}`}
+                                     className={`p-1.5 rounded-full ${isInCall ? 'bg-red-500/20 text-red-300 border border-red-500/30' : 'bg-green-500/20 text-green-300 border border-green-500/30'}`}
                                      title={isInCall ? "End Call" : "Start Video Call"}
                                    >
                                        {isInCall ? <PhoneOff size={16} /> : <VideoIcon size={16} />}
@@ -787,34 +630,22 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
                                )}
                            </div>
 
-                           <div className="relative group">
-                               <div className="absolute inset-0 bg-indigo-500/5 rounded-2xl blur-xl group-focus-within:bg-indigo-500/10 transition-colors pointer-events-none"></div>
+                           <div className="relative">
                                <textarea
                                    value={prompt}
                                    onChange={handleTyping}
-                                   onKeyDown={(e) => {
-                                       if (e.key === 'Enter' && !e.shiftKey) {
-                                           e.preventDefault();
-                                           handleSendMessage();
-                                       }
-                                   }}
-                                   className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 pr-32 text-white focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50 outline-none resize-none shadow-xl relative z-10 text-sm md:text-base"
-                                   placeholder="Ask Gemini anything..."
-                                   rows={1}
-                                   style={{ minHeight: '60px', maxHeight: '150px' }}
+                                   className="w-full bg-white/5 border border-white/10 rounded-xl p-4 pr-24 text-white focus:ring-1 focus:ring-indigo-500 outline-none resize-none"
+                                   placeholder="Ask anything..."
+                                   rows={2}
                                />
-                               <div className="absolute right-2 bottom-2 flex items-center gap-1 z-20">
-                                   <button onClick={() => fileInputRef.current?.click()} className={`p-2.5 rounded-xl transition-all ${attachment ? 'bg-emerald-500/20 text-emerald-400' : 'text-slate-400 hover:text-white hover:bg-white/10'}`} title="Attach Media">
-                                       {attachment ? <CheckCircle size={18} /> : <Upload size={18} />}
+                               <div className="absolute right-2 bottom-2 flex items-center gap-1">
+                                   <button onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-400 hover:text-white rounded hover:bg-white/10">
+                                       {attachment ? <CheckCircle size={18} className="text-green-400" /> : <Upload size={18} />}
                                    </button>
-                                   <button onClick={handleTranscribe} className="p-2.5 text-slate-400 hover:text-white rounded-xl hover:bg-white/10 transition-colors" title="Dictate">
+                                   <button onClick={handleTranscribe} className="p-2 text-slate-400 hover:text-white rounded hover:bg-white/10">
                                        <Mic size={18} />
                                    </button>
-                                   <button 
-                                    onClick={handleSendMessage} 
-                                    disabled={!!processingStatus || (!prompt.trim() && !attachment)} 
-                                    className="p-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-indigo-600/20 transition-all transform active:scale-95"
-                                   >
+                                   <button onClick={handleSendMessage} disabled={isProcessing} className="p-2 bg-indigo-600 text-white rounded hover:bg-indigo-500 disabled:opacity-50">
                                        <Send size={18} />
                                    </button>
                                </div>
@@ -827,111 +658,75 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
 
            {/* CREATE TAB */}
            {activeTab === 'create' && (
-               <div className="h-full overflow-y-auto p-8 custom-scrollbar">
-                   <div className="max-w-2xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                       <div className="flex justify-center gap-2 bg-black/30 p-1.5 rounded-xl w-fit mx-auto border border-white/10">
+               <div className="h-full overflow-y-auto p-8">
+                   <div className="max-w-2xl mx-auto space-y-8">
+                       <div className="flex justify-center gap-4 bg-white/5 p-1 rounded-xl w-fit mx-auto">
                            {(['image', 'video', 'edit'] as CreateMode[]).map(m => (
-                               <button key={m} onClick={() => setCreateMode(m)} className={`px-6 py-2 rounded-lg transition-all text-sm font-bold uppercase tracking-wide ${createMode === m ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
-                                   {m}
+                               <button key={m} onClick={() => setCreateMode(m)} className={`px-6 py-2 rounded-lg transition-colors ${createMode === m ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'}`}>
+                                   {m.charAt(0).toUpperCase() + m.slice(1)}
                                </button>
                            ))}
                        </div>
 
-                       <div className="bg-[#13111c] border border-white/5 rounded-3xl p-8 space-y-6 shadow-2xl relative overflow-hidden">
-                           <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-600/5 rounded-full blur-[80px] pointer-events-none -mr-16 -mt-16"></div>
-                           
+                       <div className="bg-black/30 border border-white/10 rounded-2xl p-6 space-y-6">
                            <div>
-                               <label className="text-xs font-bold text-indigo-300 uppercase block mb-3 tracking-wider">Prompt Description</label>
+                               <label className="text-sm font-bold text-slate-300 uppercase block mb-2">Prompt</label>
                                <textarea 
                                    value={createPrompt} 
                                    onChange={e => setCreatePrompt(e.target.value)}
-                                   className="w-full bg-black/30 border border-white/10 rounded-xl p-4 outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 text-white placeholder-slate-600 transition-all"
+                                   className="w-full bg-black/40 border border-white/10 rounded-xl p-4 outline-none focus:border-indigo-500"
                                    rows={3}
-                                   placeholder={`Describe the ${createMode} you want to generate...`}
+                                   placeholder={`Describe the ${createMode} you want...`}
                                />
                            </div>
 
                            {createMode === 'edit' && (
                                <div>
-                                   <label className="text-xs font-bold text-indigo-300 uppercase block mb-3 tracking-wider">Reference Image</label>
-                                   <div className="relative group">
-                                       <input type="file" onChange={handleRefImageUpload} accept="image/*" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"/>
-                                       <div className={`w-full border border-dashed border-white/20 rounded-xl p-6 text-center transition-all group-hover:border-indigo-500/50 group-hover:bg-indigo-500/5 ${referenceImage ? 'border-emerald-500/50 bg-emerald-500/5' : ''}`}>
-                                           {referenceImage ? (
-                                               <div className="flex items-center justify-center gap-2 text-emerald-400 font-medium"><CheckCircle size={16}/> Image Loaded</div>
-                                           ) : (
-                                               <div className="text-slate-500 flex flex-col items-center gap-2">
-                                                   <ImageIcon size={24} className="opacity-50"/>
-                                                   <span className="text-sm">Click to upload reference image</span>
-                                               </div>
-                                           )}
-                                       </div>
-                                   </div>
+                                   <label className="text-sm font-bold text-slate-300 uppercase block mb-2">Reference Image</label>
+                                   <input type="file" onChange={handleRefImageUpload} accept="image/*" className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-500/10 file:text-indigo-400 hover:file:bg-indigo-500/20"/>
                                </div>
                            )}
 
                            {createMode !== 'edit' && (
-                            <div className="flex flex-col sm:flex-row gap-6">
+                            <div className="flex gap-4">
                                 <div className="flex-1">
-                                    <label className="text-xs font-bold text-indigo-300 uppercase block mb-3 tracking-wider">Aspect Ratio</label>
-                                    <div className="relative">
-                                        <select value={aspectRatio} onChange={e => setAspectRatio(e.target.value)} className="w-full bg-black/30 border border-white/10 rounded-xl p-3 text-white outline-none appearance-none focus:border-indigo-500/50 cursor-pointer">
-                                            <option value="1:1">1:1 (Square)</option>
-                                            <option value="16:9">16:9 (Landscape)</option>
-                                            <option value="9:16">9:16 (Portrait)</option>
-                                            <option value="4:3">4:3</option>
-                                            <option value="3:4">3:4</option>
-                                        </select>
-                                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
-                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 9 6 6 6-6"/></svg>
-                                        </div>
-                                    </div>
+                                    <label className="text-sm font-bold text-slate-300 uppercase block mb-2">Aspect Ratio</label>
+                                    <select value={aspectRatio} onChange={e => setAspectRatio(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-white outline-none">
+                                        <option value="1:1">1:1 (Square)</option>
+                                        <option value="16:9">16:9 (Landscape)</option>
+                                        <option value="9:16">9:16 (Portrait)</option>
+                                        <option value="4:3">4:3</option>
+                                        <option value="3:4">3:4</option>
+                                    </select>
                                 </div>
                                 {createMode === 'image' && (
                                     <div className="flex-1">
-                                        <label className="text-xs font-bold text-indigo-300 uppercase block mb-3 tracking-wider">Resolution</label>
-                                        <div className="relative">
-                                            <select value={imageSize} onChange={e => setImageSize(e.target.value)} className="w-full bg-black/30 border border-white/10 rounded-xl p-3 text-white outline-none appearance-none focus:border-indigo-500/50 cursor-pointer">
-                                                <option value="1K">1K (Standard)</option>
-                                                <option value="2K">2K (High)</option>
-                                                <option value="4K">4K (Ultra)</option>
-                                            </select>
-                                            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500">
-                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 9 6 6 6-6"/></svg>
-                                            </div>
-                                        </div>
+                                        <label className="text-sm font-bold text-slate-300 uppercase block mb-2">Size</label>
+                                        <select value={imageSize} onChange={e => setImageSize(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-white outline-none">
+                                            <option value="1K">1K</option>
+                                            <option value="2K">2K</option>
+                                            <option value="4K">4K</option>
+                                        </select>
                                     </div>
                                 )}
                             </div>
                            )}
 
-                           <button onClick={handleCreate} disabled={isGenerating || !createPrompt} className="w-full py-4 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 bg-size-200 animate-gradient rounded-xl font-bold text-white shadow-lg shadow-indigo-900/40 hover:scale-[1.02] transition-transform disabled:opacity-50 disabled:transform-none mt-2">
-                               {isGenerating ? (
-                                   <div className="flex items-center justify-center gap-3">
-                                       <Loader2 className="animate-spin" size={20} /> 
-                                       <span>Generating Magic...</span>
-                                   </div>
-                               ) : (
-                                   <div className="flex items-center justify-center gap-2">
-                                       <Wand2 size={18} />
-                                       <span>Generate {createMode}</span>
-                                   </div>
-                               )}
+                           <button onClick={handleCreate} disabled={isGenerating} className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl font-bold text-white shadow-lg shadow-indigo-900/40 hover:scale-[1.02] transition-transform disabled:opacity-50">
+                               {isGenerating ? <div className="flex items-center justify-center gap-2"><Loader2 className="animate-spin" /> Generating...</div> : "Generate"}
                            </button>
                        </div>
 
                        {generatedMedia && (
-                           <div className="bg-black/40 rounded-3xl overflow-hidden border border-white/10 relative group shadow-2xl animate-in fade-in zoom-in duration-500">
+                           <div className="bg-black/40 rounded-2xl overflow-hidden border border-white/10 relative group">
                                {createMode === 'video' ? (
                                    <video src={generatedMedia} controls className="w-full h-auto" autoPlay loop />
                                ) : (
-                                   <img src={generatedMedia} alt="Generated" className="w-full h-auto object-cover" />
+                                   <img src={generatedMedia} alt="Generated" className="w-full h-auto" />
                                )}
-                               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-end p-6">
-                                   <a href={generatedMedia} download={`generated_${Date.now()}.${createMode === 'video' ? 'mp4' : 'png'}`} className="bg-white text-black p-3 rounded-xl hover:scale-110 transition-transform shadow-lg">
-                                       <Download size={24} />
-                                   </a>
-                               </div>
+                               <a href={generatedMedia} download={`generated_${Date.now()}.${createMode === 'video' ? 'mp4' : 'png'}`} className="absolute top-4 right-4 bg-black/60 p-2 rounded-lg text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                                   <Download size={20} />
+                               </a>
                            </div>
                        )}
                    </div>
