@@ -3,15 +3,36 @@ import Sidebar from './components/Sidebar';
 import Chat from './pages/Chat';
 import Settings from './pages/Settings';
 import Gemini from './pages/Gemini';
+import { api } from './api/heidi';
+import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 function App() {
   const [currentView, setCurrentView] = useState<'chat' | 'settings' | 'gemini'>('chat');
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [refreshSidebarTrigger, setRefreshSidebarTrigger] = useState(0);
+  const [isBackendOffline, setIsBackendOffline] = useState(false);
+  const [isChecking, setIsChecking] = useState(false);
   
   // Default to open on desktop, closed on mobile
   const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 1024);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
+
+  const checkBackend = async () => {
+    setIsChecking(true);
+    try {
+      await api.health();
+      setIsBackendOffline(false);
+    } catch (e) {
+      setIsBackendOffline(true);
+    } finally {
+      setIsChecking(false);
+    }
+  };
+
+  // Initial connectivity check
+  useEffect(() => {
+    checkBackend();
+  }, []);
 
   // Monitor screen size
   useEffect(() => {
@@ -57,6 +78,24 @@ function App() {
   return (
     <div className="flex h-[100dvh] w-full bg-[#050505] text-slate-100 overflow-hidden font-sans selection:bg-purple-500/30 relative">
       
+      {/* Backend Offline Banner */}
+      {isBackendOffline && (
+        <div className="fixed top-0 left-0 right-0 z-[100] bg-red-600/90 backdrop-blur-md text-white px-4 py-2 text-sm font-bold flex items-center justify-center gap-4 shadow-xl animate-in slide-in-from-top duration-300">
+           <div className="flex items-center gap-2">
+             <AlertTriangle size={16} />
+             <span>Backend not reachable</span>
+           </div>
+           <button 
+             onClick={checkBackend}
+             disabled={isChecking}
+             className="flex items-center gap-1.5 px-3 py-1 bg-white text-red-600 rounded-full text-xs hover:bg-red-50 disabled:opacity-75 transition-colors"
+           >
+             <RefreshCw size={12} className={isChecking ? 'animate-spin' : ''} />
+             {isChecking ? 'Checking...' : 'Retry'}
+           </button>
+        </div>
+      )}
+
       {/* Dynamic Background */}
       <div className="fixed inset-0 z-0 pointer-events-none">
           <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-purple-900/10 rounded-full blur-[120px] opacity-40 animate-pulse"></div>
@@ -99,7 +138,7 @@ function App() {
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col relative h-full min-w-0 z-10 bg-gradient-to-b from-transparent to-black/30">
+      <main className={`flex-1 flex flex-col relative h-full min-w-0 z-10 bg-gradient-to-b from-transparent to-black/30 ${isBackendOffline ? 'pt-8' : ''}`}>
         {currentView === 'gemini' ? (
              <Gemini 
                 isSidebarOpen={isSidebarOpen}

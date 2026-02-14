@@ -1,7 +1,7 @@
 import { Agent, LoopRequest, RunDetails, RunRequest, RunResponse, RunSummary, SettingsState, User, AuthProvider } from '../types';
 
-// Checklist: Default to 127.0.0.1:7777, respect env var
-const DEFAULT_BASE_URL = (import.meta as any).env?.VITE_HEIDI_SERVER_BASE || 'http://127.0.0.1:7777';
+// Default to relative /api path so requests go through Vite proxy (dev) or same-origin (prod)
+const DEFAULT_BASE_URL = '/api';
 const DEFAULT_API_KEY = (import.meta as any).env?.VITE_HEIDI_API_KEY || '';
 
 export const getSettings = (): SettingsState => {
@@ -95,7 +95,7 @@ const safeFetch = async (url: string, options: RequestInit = {}): Promise<Respon
     console.error(`Heidi API Request Failed: ${url}`, error);
     if (error instanceof TypeError && error.message === 'Failed to fetch') {
       throw new Error(
-        `Connection failed. Ensure backend is running at ${getSettings().baseUrl} and CORS allows ${window.location.origin}`
+        `Connection failed. Ensure backend is accessible at ${getSettings().baseUrl}`
       );
     }
     throw error;
