@@ -41,7 +41,9 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
   const [useSearch, setUseSearch] = useState(false);
   const [useMaps, setUseMaps] = useState(false);
   
-  const [isProcessing, setIsProcessing] = useState(false);
+  // Replaced isProcessing boolean with a status string for granular feedback
+  const [processingStatus, setProcessingStatus] = useState<string | null>(null);
+  
   const [attachment, setAttachment] = useState<{ type: 'image' | 'video'; data: string; mimeType: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
@@ -97,7 +99,7 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
   // Auto-scroll
   useEffect(() => {
       chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isProcessing, typingUsers]);
+  }, [messages, processingStatus, typingUsers]);
 
   // Auto-save Effect
   useEffect(() => {
@@ -198,7 +200,16 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
 
     setPrompt('');
     setAttachment(null);
-    setIsProcessing(true);
+    
+    // Determine granular status message
+    let statusMsg = "Generating response...";
+    if (useSearch) statusMsg = "Searching information...";
+    else if (useMaps) statusMsg = "Locating places...";
+    else if (isThinking) statusMsg = "Thinking deeply...";
+    else if (currentAttachment?.type === 'image') statusMsg = "Analyzing image...";
+    else if (currentAttachment?.type === 'video') statusMsg = "Watching video...";
+    
+    setProcessingStatus(statusMsg);
 
     try {
       let model = selectedModel;
@@ -265,7 +276,7 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
     } catch (e: any) {
       setMessages(prev => [...prev, { role: 'model', text: `Error: ${e.message}` }]);
     } finally {
-      setIsProcessing(false);
+      setProcessingStatus(null);
     }
   };
 
@@ -285,7 +296,7 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
             reader.readAsDataURL(audioBlob);
             reader.onloadend = async () => {
                 const base64Audio = (reader.result as string).split(',')[1];
-                setIsProcessing(true);
+                setProcessingStatus("Processing audio...");
                 try {
                      const response = await ai.models.generateContent({
                         model: 'gemini-3-flash-preview',
@@ -300,20 +311,20 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
                 } catch (e) {
                     console.error(e);
                 } finally {
-                    setIsProcessing(false);
+                    setProcessingStatus(null);
                 }
             };
             stream.getTracks().forEach(track => track.stop());
         };
 
         mediaRecorder.start();
-        setLiveStatus("Recording...");
+        setProcessingStatus("Listening...");
         setTimeout(() => {
             mediaRecorder.stop();
-            setLiveStatus("Disconnected");
         }, 5000); 
     } catch (e) {
         console.error("Mic permission denied", e);
+        setProcessingStatus(null);
     }
   };
 
@@ -716,12 +727,12 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
                                </div>
                            </div>
                        ))}
-                       {isProcessing && (
+                       {processingStatus && (
                            <div className="flex gap-3 items-center text-indigo-300/70 text-sm animate-pulse pl-2">
                                <div className="w-8 h-8 flex items-center justify-center">
                                     <Loader2 size={16} className="animate-spin" /> 
                                </div>
-                               <span>Gemini is thinking...</span>
+                               <span>{processingStatus}</span>
                            </div>
                        )}
                        {typingUsers.length > 0 && (
@@ -801,7 +812,7 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
                                    </button>
                                    <button 
                                     onClick={handleSendMessage} 
-                                    disabled={isProcessing || (!prompt.trim() && !attachment)} 
+                                    disabled={!!processingStatus || (!prompt.trim() && !attachment)} 
                                     className="p-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-indigo-600/20 transition-all transform active:scale-95"
                                    >
                                        <Send size={18} />
