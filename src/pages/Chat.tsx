@@ -137,9 +137,13 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
       ) {
         startStreaming(id);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError('Failed to load run details');
+      if (err.message === 'Unauthorized') {
+          setError('Authentication required to view this run.');
+      } else {
+          setError('Failed to load run details');
+      }
     }
   };
 
@@ -209,9 +213,14 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
     try {
       const response = await fetch(streamUrl, {
         headers,
-        signal: controller.signal
+        signal: controller.signal,
+        credentials: 'include' // Important for cookie-based auth
       });
       
+      if (response.status === 401 || response.status === 403) {
+          throw new Error("Unauthorized");
+      }
+
       if (!response.ok) {
          throw new Error(`Stream connection failed: ${response.statusText}`);
       }
@@ -270,6 +279,11 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
       }
     } catch (e: any) {
       if (e.name === 'AbortError') return;
+      if (e.message === 'Unauthorized') {
+          setError('Stream unauthorized. Please log in.');
+          setStatus(RunStatus.FAILED);
+          return;
+      }
       console.warn("Streaming failed, switching to polling", e);
       startPolling(id);
     }

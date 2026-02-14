@@ -20,15 +20,12 @@ const getHeaders = (customApiKey?: string) => {
     'Content-Type': 'application/json',
   };
   
-  // NOTE: Backend currently has no auth. Sending this header might cause CORS issues if not allowed.
-  // Uncomment when backend supports X-Heidi-Key.
-  /*
   const { apiKey } = getSettings();
   const key = customApiKey !== undefined ? customApiKey : apiKey;
+  
   if (key) {
     headers['X-Heidi-Key'] = key;
   }
-  */
   
   return headers;
 };
@@ -75,18 +72,31 @@ export const generatePKCE = async () => {
   return { verifier, challenge };
 };
 
+// Helper for requests with auth
+const safeFetch = async (url: string, options: RequestInit = {}) => {
+  const res = await fetch(url, {
+    ...options,
+    credentials: 'include', // Ensure cookies are sent if used
+  });
+  return res;
+};
+
 export const api = {
   health: async (customBaseUrl?: string, customApiKey?: string): Promise<{ status: string }> => {
     const url = getBaseUrl(customBaseUrl);
     const headers = getHeaders(customApiKey);
-    const res = await fetch(`${url}/health`, { headers });
+    const res = await safeFetch(`${url}/health`, { headers });
+    
+    if (res.status === 401 || res.status === 403) {
+      throw new Error("Unauthorized");
+    }
     if (!res.ok) throw new Error('Health check failed');
     return res.json();
   },
 
   getAgents: async (): Promise<Agent[]> => {
     try {
-      const res = await fetch(`${getBaseUrl()}/agents`, { headers: getHeaders() });
+      const res = await safeFetch(`${getBaseUrl()}/agents`, { headers: getHeaders() });
       if (!res.ok) return [];
       return res.json();
     } catch (e) {
@@ -96,54 +106,51 @@ export const api = {
   },
 
   startRun: async (payload: RunRequest): Promise<RunResponse> => {
-    // Spec: POST /run { "prompt": "text", "executor": "copilot", "workdir": null }
     const body = {
       prompt: payload.prompt,
       executor: payload.executor || 'copilot',
       workdir: payload.workdir || null,
-      // Optional: Include dry_run only if true
       ...(payload.dry_run ? { dry_run: true } : {})
     };
 
-    const res = await fetch(`${getBaseUrl()}/run`, {
+    const res = await safeFetch(`${getBaseUrl()}/run`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(body),
     });
     if (!res.ok) {
       const errText = await res.text();
+      if (res.status === 401) throw new Error("Unauthorized");
       throw new Error(`Failed to start run: ${errText}`);
     }
     return res.json();
   },
 
   startLoop: async (payload: LoopRequest): Promise<RunResponse> => {
-    // Spec: POST /loop { "task": "text", "executor": "copilot", "max_retries": 2, "workdir": null }
     const body = {
       task: payload.task,
       executor: payload.executor || 'copilot',
       max_retries: payload.max_retries ?? 2,
       workdir: payload.workdir || null,
-      // Optional: Include dry_run only if true
       ...(payload.dry_run ? { dry_run: true } : {})
     };
 
-    const res = await fetch(`${getBaseUrl()}/loop`, {
+    const res = await safeFetch(`${getBaseUrl()}/loop`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(body),
     });
     if (!res.ok) {
       const errText = await res.text();
+      if (res.status === 401) throw new Error("Unauthorized");
       throw new Error(`Failed to start loop: ${errText}`);
     }
     return res.json();
   },
 
   cancelRun: async (runId: string): Promise<void> => {
-    // Best effort cancellation
     try {
-      await fetch(`${getBaseUrl()}/runs/${runId}/cancel`, {
+      await safeFetch(`${getBaseUrl()}/runs/${runId}/cancel`, {
         method: 'POST',
         headers: getHeaders(),
       });
@@ -153,13 +160,13 @@ export const api = {
   },
 
   getRuns: async (limit = 10): Promise<RunSummary[]> => {
-    const res = await fetch(`${getBaseUrl()}/runs?limit=${limit}`, { headers: getHeaders() });
+    const res = await safeFetch(`${getBaseUrl()}/runs?limit=${limit}`, { headers: getHeaders() });
     if (!res.ok) throw new Error('Failed to fetch runs');
     return res.json();
   },
 
   getRun: async (runId: string): Promise<RunDetails> => {
-    const res = await fetch(`${getBaseUrl()}/runs/${runId}`, { headers: getHeaders() });
+    const res = await safeFetch(`${getBaseUrl()}/runs/${runId}`, { headers: getHeaders() });
     if (!res.ok) throw new Error('Failed to fetch run details');
     return res.json();
   },
@@ -170,7 +177,7 @@ export const api = {
 
   getAuthProviders: async (): Promise<AuthProvider[]> => {
     try {
-      const res = await fetch(`${getBaseUrl()}/auth/providers`, { headers: getHeaders() });
+      const res = await safeFetch(`${getBaseUrl()}/auth/providers`, { headers: getHeaders() });
       if (!res.ok) return [];
       return res.json();
     } catch (e) {
@@ -180,7 +187,7 @@ export const api = {
   },
 
   loginStart: async (providerId: string, redirectUri: string, challenge: string): Promise<{ authorization_url: string }> => {
-    const res = await fetch(`${getBaseUrl()}/auth/login/${providerId}`, {
+    const res = await safeFetch(`${getBaseUrl()}/auth/login/${providerId}`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify({
@@ -197,7 +204,7 @@ export const api = {
   },
 
   loginFinish: async (code: string, verifier: string): Promise<any> => {
-    const res = await fetch(`${getBaseUrl()}/auth/callback`, {
+    const res = await safeFetch(`${getBaseUrl()}/auth/callback`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify({
