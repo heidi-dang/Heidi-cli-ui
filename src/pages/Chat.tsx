@@ -195,7 +195,9 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
     stopStreaming();
     
     const { apiKey } = getSettings();
-    const headers: HeadersInit = {};
+    const headers: HeadersInit = {
+        'Accept': 'text/event-stream'
+    };
     if (apiKey) {
         headers['X-Heidi-Key'] = apiKey;
     }
@@ -209,6 +211,10 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
         headers,
         signal: controller.signal
       });
+      
+      if (!response.ok) {
+         throw new Error(`Stream connection failed: ${response.statusText}`);
+      }
       
       if (!response.body) throw new Error("No response body");
       
@@ -233,7 +239,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
           for (const line of lines) {
             const trimmed = line.trim();
             if (trimmed.startsWith('data:')) {
-               const jsonStr = trimmed.replace(/^data:\s?/, '');
+               const jsonStr = trimmed.replace(/^data:\s?/, '').trim();
                if (!jsonStr) continue;
                try {
                  const data = JSON.parse(jsonStr);
@@ -251,6 +257,9 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
                  // If the SSE event contains usage info (depends on backend implementation)
                  if (data.usage) {
                    setUsage(data.usage);
+                 }
+                 if (data.type === 'error') {
+                   setError(data.message);
                  }
                } catch (e) {
                  console.warn("Error parsing SSE JSON chunk", jsonStr);
@@ -351,7 +360,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
            {!isSidebarOpen && (
                <button 
                 onClick={onToggleSidebar} 
-                className="lg:hidden text-slate-400 hover:text-white transition-colors p-2 -ml-2 rounded-lg hover:bg-white/5 active:bg-white/10"
+                className="text-slate-400 hover:text-white transition-colors p-2 -ml-2 rounded-lg hover:bg-white/5 active:bg-white/10"
                 aria-label="Open Menu"
                >
                    <PanelLeft size={20} />

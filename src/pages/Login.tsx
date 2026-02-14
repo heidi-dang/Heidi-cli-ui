@@ -54,7 +54,7 @@ export default function Login() {
 
                 <div className="text-center mb-10 relative z-10">
                     <div className="w-20 h-20 bg-gradient-to-tr from-indigo-500 to-purple-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg shadow-purple-900/40 mb-4 p-0.5">
-                        <img src="/heidiai_logo.png" alt="Heidi" className="w-full h-full object-cover rounded-[14px]" />
+                        <img src="/heidiai_logo.png" alt="Heidi" className="w-full h-full object-contain p-2 rounded-[14px]" />
                     </div>
                     <h1 className="text-2xl font-bold tracking-tight mb-2">Welcome to Heidi AI</h1>
                     <p className="text-slate-400 text-sm">Sign in to continue to your workspace</p>

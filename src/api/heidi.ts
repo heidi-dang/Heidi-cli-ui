@@ -2,11 +2,15 @@ import { Agent, LoopRequest, RunDetails, RunRequest, RunResponse, RunSummary, Se
 
 // Checklist: Default to 127.0.0.1:7777, respect env var
 const DEFAULT_BASE_URL = (import.meta as any).env?.VITE_HEIDI_SERVER_BASE || 'http://127.0.0.1:7777';
+const DEFAULT_API_KEY = (import.meta as any).env?.VITE_HEIDI_API_KEY || '';
 
 export const getSettings = (): SettingsState => {
   return {
     baseUrl: localStorage.getItem('HEIDI_BASE_URL') || DEFAULT_BASE_URL,
-    apiKey: localStorage.getItem('HEIDI_API_KEY') || '',
+    // Use env var as default if no local setting exists, but allow empty string if user cleared it.
+    apiKey: localStorage.getItem('HEIDI_API_KEY') !== null 
+        ? localStorage.getItem('HEIDI_API_KEY')! 
+        : DEFAULT_API_KEY,
   };
 };
 
@@ -20,7 +24,6 @@ const queryParams = new URLSearchParams(window.location.search);
 const paramBaseUrl = queryParams.get('baseUrl');
 if (paramBaseUrl) {
     saveSettings({ ...getSettings(), baseUrl: paramBaseUrl });
-    // Clean URL
     const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
     window.history.replaceState({ path: newUrl }, '', newUrl);
 }
@@ -32,6 +35,7 @@ const getHeaders = (customApiKey?: string) => {
   
   const { apiKey } = getSettings();
   const key = customApiKey !== undefined ? customApiKey : apiKey;
+  
   if (key) {
     headers['X-Heidi-Key'] = key;
   }
@@ -41,7 +45,6 @@ const getHeaders = (customApiKey?: string) => {
 
 const getBaseUrl = (customUrl?: string) => {
   let url = customUrl || getSettings().baseUrl;
-  // Remove trailing slash if present
   return url.replace(/\/$/, '');
 };
 
@@ -83,18 +86,34 @@ export const generatePKCE = async () => {
     return { verifier, challenge };
 };
 
+// Robust fetch wrapper to detect CORS/Network issues
+const safeFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
+  try {
+    const res = await fetch(url, options);
+    return res;
+  } catch (error: any) {
+    console.error(`Heidi API Request Failed: ${url}`, error);
+    if (error instanceof TypeError && error.message === 'Failed to fetch') {
+      throw new Error(
+        `Connection failed. Ensure backend is running at ${getSettings().baseUrl} and CORS allows ${window.location.origin}`
+      );
+    }
+    throw error;
+  }
+};
+
 export const api = {
   health: async (customBaseUrl?: string, customApiKey?: string): Promise<{ status: string }> => {
     const url = getBaseUrl(customBaseUrl);
     const headers = getHeaders(customApiKey);
-    const res = await fetch(`${url}/health`, { headers, credentials: 'include' });
+    const res = await safeFetch(`${url}/health`, { headers, credentials: 'include' });
     if (!res.ok) throw new Error('Health check failed');
     return res.json();
   },
 
   getAgents: async (): Promise<Agent[]> => {
     try {
-      const res = await fetch(`${getBaseUrl()}/agents`, { headers: getHeaders(), credentials: 'include' });
+      const res = await safeFetch(`${getBaseUrl()}/agents`, { headers: getHeaders(), credentials: 'include' });
       if (!res.ok) return [];
       return res.json();
     } catch (e) {
@@ -111,7 +130,7 @@ export const api = {
       ...(payload.dry_run ? { dry_run: true } : {})
     };
 
-    const res = await fetch(`${getBaseUrl()}/run`, {
+    const res = await safeFetch(`${getBaseUrl()}/run`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(body),
@@ -133,7 +152,7 @@ export const api = {
       ...(payload.dry_run ? { dry_run: true } : {})
     };
 
-    const res = await fetch(`${getBaseUrl()}/loop`, {
+    const res = await safeFetch(`${getBaseUrl()}/loop`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(body),
@@ -148,7 +167,7 @@ export const api = {
 
   cancelRun: async (runId: string): Promise<void> => {
     try {
-      await fetch(`${getBaseUrl()}/runs/${runId}/cancel`, {
+      await safeFetch(`${getBaseUrl()}/runs/${runId}/cancel`, {
         method: 'POST',
         headers: getHeaders(),
         credentials: 'include'
@@ -159,13 +178,13 @@ export const api = {
   },
 
   getRuns: async (limit = 10): Promise<RunSummary[]> => {
-    const res = await fetch(`${getBaseUrl()}/runs?limit=${limit}`, { headers: getHeaders(), credentials: 'include' });
+    const res = await safeFetch(`${getBaseUrl()}/runs?limit=${limit}`, { headers: getHeaders(), credentials: 'include' });
     if (!res.ok) throw new Error('Failed to fetch runs');
     return res.json();
   },
 
   getRun: async (runId: string): Promise<RunDetails> => {
-    const res = await fetch(`${getBaseUrl()}/runs/${runId}`, { headers: getHeaders(), credentials: 'include' });
+    const res = await safeFetch(`${getBaseUrl()}/runs/${runId}`, { headers: getHeaders(), credentials: 'include' });
     if (!res.ok) throw new Error('Failed to fetch run details');
     return res.json();
   },
@@ -177,7 +196,7 @@ export const api = {
   // Auth API
   getMe: async (): Promise<User | null> => {
     try {
-      const res = await fetch(`${getBaseUrl()}/auth/me`, { headers: getHeaders(), credentials: 'include' });
+      const res = await safeFetch(`${getBaseUrl()}/auth/me`, { headers: getHeaders(), credentials: 'include' });
       if (res.status === 401 || res.status === 403) return null;
       if (!res.ok) return null;
       return res.json();
@@ -188,7 +207,7 @@ export const api = {
 
   getAuthProviders: async (): Promise<AuthProvider[]> => {
     try {
-      const res = await fetch(`${getBaseUrl()}/auth/providers`, { headers: getHeaders(), credentials: 'include' });
+      const res = await safeFetch(`${getBaseUrl()}/auth/providers`, { headers: getHeaders(), credentials: 'include' });
       if (!res.ok) return [];
       return res.json();
     } catch (e) {
@@ -197,7 +216,7 @@ export const api = {
   },
 
   loginStart: async (provider: string, redirectUri: string, challenge: string): Promise<{ authorization_url: string }> => {
-    const res = await fetch(`${getBaseUrl()}/auth/login/start`, {
+    const res = await safeFetch(`${getBaseUrl()}/auth/login/start`, {
         method: 'POST',
         headers: getHeaders(),
         body: JSON.stringify({
@@ -213,7 +232,7 @@ export const api = {
   },
 
   loginFinish: async (code: string, verifier: string): Promise<User> => {
-      const res = await fetch(`${getBaseUrl()}/auth/login/finish`, {
+      const res = await safeFetch(`${getBaseUrl()}/auth/login/finish`, {
           method: 'POST',
           headers: getHeaders(),
           body: JSON.stringify({
@@ -227,7 +246,7 @@ export const api = {
   },
 
   logout: async (): Promise<void> => {
-      await fetch(`${getBaseUrl()}/auth/logout`, {
+      await safeFetch(`${getBaseUrl()}/auth/logout`, {
           method: 'POST',
           headers: getHeaders(),
           credentials: 'include'

@@ -13,28 +13,34 @@ const Settings: React.FC<SettingsProps> = ({ isSidebarOpen, onToggleSidebar }) =
   const [status, setStatus] = useState<'idle' | 'checking' | 'connected' | 'error'>('idle');
   const [msg, setMsg] = useState('');
 
+  // Initial load only
   useEffect(() => {
     const current = getSettings();
     setBaseUrl(current.baseUrl);
     setApiKey(current.apiKey);
+    // Use the loaded settings for the initial check
     checkConnection(current.baseUrl, current.apiKey);
   }, []);
 
   const checkConnection = async (url: string, key: string) => {
     setStatus('checking');
     try {
+      // Pass the key explicitly to api.health to ensure we test exactly what is in the inputs/state
+      // independent of what is currently saved in localStorage.
       await api.health(url, key);
       setStatus('connected');
       setMsg('Connected successfully');
-    } catch (error) {
+    } catch (error: any) {
       setStatus('error');
-      setMsg('Connection failed');
+      setMsg(error.message || 'Connection failed');
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    // Save current state to storage
     saveSettings({ baseUrl, apiKey });
-    checkConnection(baseUrl, apiKey);
+    // Verify connection using the current state values
+    await checkConnection(baseUrl, apiKey);
   };
 
   return (
@@ -44,7 +50,7 @@ const Settings: React.FC<SettingsProps> = ({ isSidebarOpen, onToggleSidebar }) =
            {!isSidebarOpen && (
                <button 
                 onClick={onToggleSidebar} 
-                className="lg:hidden text-slate-400 hover:text-white transition-colors p-2 -ml-2 rounded-lg hover:bg-white/5 active:bg-white/10"
+                className="text-slate-400 hover:text-white transition-colors p-2 -ml-2 rounded-lg hover:bg-white/5 active:bg-white/10"
                >
                    <PanelLeft size={20} />
                </button>

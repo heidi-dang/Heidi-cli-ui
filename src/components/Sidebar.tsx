@@ -54,7 +54,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onNewChat, o
         >
             <div className="w-10 h-10 relative flex-shrink-0 flex items-center justify-center bg-gradient-to-tr from-indigo-500 to-purple-600 rounded-xl shadow-lg shadow-purple-900/20 p-[1px] group-hover:shadow-purple-900/40 transition-all duration-300 group-hover:scale-105">
                 <div className="w-full h-full bg-[#0a0a0a] rounded-[11px] flex items-center justify-center overflow-hidden">
-                     <img src="/heidiai_logo.png" alt="Heidi AI" className="w-full h-full object-cover opacity-90 group-hover:opacity-100" />
+                     <img src="/heidiai_logo.png" alt="Heidi AI" className="w-full h-full object-contain p-1 opacity-90 group-hover:opacity-100" />
                 </div>
             </div>
             <div className="flex flex-col">
@@ -65,12 +65,14 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onNewChat, o
             </div>
         </div>
         
-        {/* Mobile Close Button */}
+        {/* Toggle Button (Desktop & Mobile) */}
         <button 
             onClick={onToggle}
-            className="lg:hidden text-slate-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-white/10 active:bg-white/20"
+            className="text-slate-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-white/10 active:bg-white/20"
+            title="Toggle Sidebar"
         >
-            <X size={24} />
+            <X size={24} className="lg:hidden" />
+            <PanelLeft size={20} className="hidden lg:block" />
         </button>
       </div>
 
