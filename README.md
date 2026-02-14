@@ -12,7 +12,7 @@ A minimal web UI for the Heidi AI backend, supporting Run and Loop modes with re
 ## Prerequisites
 
 - Node.js (v18+)
-- Running Heidi Backend (default: `http://localhost:7777`)
+- Running Heidi Backend (default: `http://127.0.0.1:7777`)
 
 ## Setup
 
@@ -30,18 +30,21 @@ A minimal web UI for the Heidi AI backend, supporting Run and Loop modes with re
     npm run dev
     ```
 
-    The app will start at [http://localhost:3000](http://localhost:3000).
+    The app will start at [http://127.0.0.1:3002](http://127.0.0.1:3002).
 
 ## Configuration
 
 ### Backend URL
 
-By default, the app connects to `http://localhost:7777`.
+By default, the app connects to `http://127.0.0.1:7777`.
 
-To change this (e.g., if using a Cloudflared tunnel):
-1.  Go to **Settings** (Gear icon in sidebar).
-2.  Update **Heidi Base URL**.
-3.  Click **Save & Connect**.
+To change this (e.g., if using a Cloudflared tunnel or a different port):
+1.  Create a `.env` file based on `.env.example`:
+    ```bash
+    cp .env.example .env
+    ```
+2.  Update `VITE_HEIDI_SERVER_BASE` in `.env`.
+3.  Alternatively, go to **Settings** in the web UI (Gear icon) to override it for the current session.
 
 ### API Key
 
@@ -49,9 +52,8 @@ If your Heidi backend requires authentication:
 1.  Go to **Settings**.
 2.  Enter your **API Key**.
 3.  The key will be sent via the `X-Heidi-Key` header.
-    *Note: SSE streaming might fall back to polling if the backend strictly requires headers for streaming endpoints, as standard EventSource does not support headers.*
 
 ## Troubleshooting
 
--   **CORS Errors**: Ensure your Heidi backend allows CORS for `http://localhost:3000`.
+-   **CORS Errors**: Ensure your Heidi backend allows CORS for `http://127.0.0.1:3002`.
 -   **Connection Failed**: Verify the backend is running and the URL in Settings is correct.
