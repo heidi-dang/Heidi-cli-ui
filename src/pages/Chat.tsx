@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { api, getSettings } from '../api/heidi';
 import { Agent, AppMode, RunEvent, RunStatus } from '../types';
 import { 
-  Send, Repeat, StopCircle, CheckCircle, AlertCircle, Loader2, PlayCircle, PanelLeft,
-  Sparkles, Cpu, Map, Terminal, Eye, Shield, ArrowRight
+  Send, StopCircle, CheckCircle, AlertCircle, Loader2, PanelLeft,
+  Sparkles, Cpu, Map, Terminal, Eye, Shield, ArrowRight, CornerDownLeft, Clock
 } from 'lucide-react';
 
 interface ChatProps {
@@ -36,6 +36,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
   const abortControllerRef = useRef<AbortController | null>(null);
   const pollingRef = useRef<any>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // --- Initialization ---
   useEffect(() => {
@@ -57,11 +58,19 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
     if (chatBottomRef.current) {
       chatBottomRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [transcript, status]);
+  }, [transcript, status, isSending]);
 
   useEffect(() => {
     return () => stopStreaming();
   }, []);
+
+  // Resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+        textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 160) + 'px';
+    }
+  }, [prompt]);
 
   // --- Logic ---
   const resetChat = () => {
@@ -135,7 +144,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
     const currentPrompt = prompt;
     resetChat();
     
-    // Add user prompt to transcript immediately
+    // Add user prompt to transcript immediately so it shows in the list
     setTranscript([{
         type: 'user_prompt',
         message: currentPrompt,
@@ -254,7 +263,6 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
       try {
         const details = await api.getRun(id);
         
-        // Merge meta prompt for polling too
         let events = details.events || [];
         const userMsg = details.meta?.prompt || details.meta?.task;
         const hasUserPromptEvent = events.some(e => e.type === 'user_prompt');
@@ -288,28 +296,26 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
     const s = rawStatus.toLowerCase();
     
     let color = "bg-white/5 text-slate-400 border border-white/10";
-    let icon = <Loader2 size={14} className="animate-spin text-purple-400" />;
+    let icon = <div className="w-2 h-2 rounded-full bg-slate-500" />;
     let label = rawStatus;
 
     if (s === 'completed') {
-      color = "bg-emerald-500/10 text-emerald-300 border border-emerald-500/20";
+      color = "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
       icon = <CheckCircle size={14} />;
     } else if (s === 'failed' || s === 'error') {
-      color = "bg-red-500/10 text-red-300 border border-red-500/20";
+      color = "bg-red-500/10 text-red-400 border border-red-500/20";
       icon = <AlertCircle size={14} />;
     } else if (s === 'idle') {
-      color = "bg-white/5 text-slate-400 border border-white/10";
-      icon = <div className="w-2 h-2 rounded-full bg-slate-500" />;
-      label = "Idle";
+      label = "Ready";
     } else if (s.includes('cancel')) {
-      color = "bg-orange-500/10 text-orange-300 border border-orange-500/20";
+      color = "bg-orange-500/10 text-orange-400 border border-orange-500/20";
       icon = <StopCircle size={14} />;
     } else if (s.includes('initiating')) {
-      color = "bg-blue-500/10 text-blue-300 border border-blue-500/20";
+      color = "bg-blue-500/10 text-blue-400 border border-blue-500/20";
       icon = <Loader2 size={14} className="animate-spin" />;
       label = "Init...";
     } else {
-      color = "bg-purple-500/10 text-purple-300 border border-purple-500/20 shadow-[0_0_10px_rgba(168,85,247,0.1)]";
+      color = "bg-purple-500/10 text-purple-400 border border-purple-500/20 shadow-[0_0_15px_rgba(168,85,247,0.1)]";
       if (s.includes('planning')) { label = "Planning"; icon = <Map size={14} />; }
       else if (s.includes('executing')) { label = "Executing"; icon = <Terminal size={14} />; }
       else if (s.includes('reviewing')) { label = "Reviewing"; icon = <Eye size={14} />; }
@@ -318,9 +324,9 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
     }
 
     return (
-      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] md:text-xs font-bold uppercase tracking-wider backdrop-blur-md transition-all duration-300 ${color}`}>
+      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wider backdrop-blur-md transition-all duration-300 ${color}`}>
         {icon}
-        <span className="truncate max-w-[120px]">{label}</span>
+        <span className="truncate max-w-[100px] sm:max-w-none">{label}</span>
       </div>
     );
   };
@@ -329,55 +335,61 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
     <div className="flex flex-col h-full w-full bg-transparent overflow-hidden">
       
       {/* 1. Navbar */}
-      <div className="flex items-center justify-between px-4 md:px-6 py-4 border-b border-white/5 bg-black/40 backdrop-blur-xl z-10 shrink-0">
-        <div className="flex items-center gap-3 md:gap-4 overflow-hidden">
+      <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-white/5 bg-[#0a0a0a]/80 backdrop-blur-xl z-20 shrink-0 sticky top-0">
+        <div className="flex items-center gap-3 overflow-hidden w-full">
            {!isSidebarOpen && (
                <button 
                 onClick={onToggleSidebar} 
-                className="text-slate-400 hover:text-white transition-colors p-2 -ml-2 rounded-lg hover:bg-white/5 active:scale-95 transform duration-100"
-                aria-label="Toggle Sidebar"
+                className="lg:hidden text-slate-400 hover:text-white transition-colors p-2 -ml-2 rounded-lg hover:bg-white/5 active:bg-white/10"
+                aria-label="Open Menu"
                >
                    <PanelLeft size={20} />
                </button>
            )}
-           <div className="flex flex-col min-w-0">
+           <div className="flex items-center gap-3 overflow-hidden">
                {renderStatusBadge()}
+               {runId && (
+                   <span className="hidden sm:flex items-center gap-1.5 text-[10px] font-mono text-slate-500 bg-white/5 px-2 py-1 rounded-md">
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-600"></span>
+                        {runId}
+                   </span>
+               )}
            </div>
-           {runId && <span className="hidden md:inline text-xs font-mono text-white/30 truncate">ID: {runId}</span>}
         </div>
       </div>
 
       {/* 2. Transcript */}
-      <div className="flex-1 overflow-y-auto px-4 md:px-6 py-6 space-y-6 scroll-smooth custom-scrollbar w-full max-w-5xl mx-auto">
+      <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 space-y-8 scroll-smooth custom-scrollbar w-full max-w-4xl mx-auto">
         
         {/* Empty State */}
         {!runId && transcript.length === 0 && !isSending && (
-          <div className="h-full flex flex-col items-center justify-center text-center px-4 pb-20 opacity-0 animate-in fade-in duration-700 delay-100 fill-mode-forwards">
-             <div className="w-24 h-24 md:w-32 md:h-32 mb-6 relative group cursor-pointer">
-                 <div className="absolute inset-0 bg-purple-500/30 blur-[60px] rounded-full group-hover:bg-purple-500/40 transition-all duration-700"></div>
-                 <img src="/heidiai_logo.png" className="relative w-full h-full object-contain drop-shadow-2xl group-hover:scale-105 transition-transform duration-500" alt="Heidi AI" />
+          <div className="h-full flex flex-col items-center justify-center text-center px-4 pb-20 opacity-0 animate-in fade-in zoom-in duration-700 fill-mode-forwards">
+             <div className="w-20 h-20 sm:w-24 sm:h-24 mb-6 relative group cursor-default">
+                 <div className="absolute inset-0 bg-purple-500/20 blur-[40px] rounded-full group-hover:bg-purple-500/30 transition-all duration-700"></div>
+                 <img src="/heidiai_logo.png" className="relative w-full h-full object-contain drop-shadow-2xl opacity-90 grayscale-[0.2]" alt="Heidi AI" />
              </div>
-            <h2 className="mt-4 text-2xl md:text-4xl font-bold text-white tracking-tight">How can I help you?</h2>
-            <p className="text-slate-400 mt-3 text-sm md:text-base max-w-md">
-                Select an agent, configure your mode, and start automating your tasks.
+            <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Heidi AI</h2>
+            <p className="text-slate-400 mt-2 text-sm max-w-[280px] sm:max-w-md mx-auto leading-relaxed">
+                Your autonomous agent for planning, executing, and auditing complex tasks.
             </p>
           </div>
         )}
 
         {/* Events */}
-        <div className="space-y-4">
+        <div className="space-y-6">
             {transcript.map((event, idx) => {
                 if (!event.message) return null;
                 
-                // User Prompt styling
+                // User Prompt styling (Inserted into transcript)
                 if (event.type === 'user_prompt') {
                     return (
-                        <div key={idx} className="flex justify-end animate-in fade-in slide-in-from-bottom-2 duration-300">
-                            <div className="max-w-[85%] md:max-w-[70%] bg-gradient-to-br from-indigo-600 to-purple-700 text-white px-5 py-4 rounded-3xl rounded-tr-sm shadow-xl shadow-purple-900/10 border border-white/10">
-                                <div className="text-[10px] text-indigo-200 mb-1 font-bold uppercase opacity-70 tracking-wide">
-                                    {mode === AppMode.LOOP ? 'Task' : 'Prompt'}
+                        <div key={idx} className="flex justify-end animate-in fade-in slide-in-from-bottom-2 duration-500">
+                            <div className="max-w-[85%] sm:max-w-[75%] bg-gradient-to-br from-[#2d2b42] to-[#1e1c2e] text-white px-5 py-4 rounded-2xl rounded-tr-sm shadow-xl shadow-black/20 border border-white/5">
+                                <div className="text-[10px] text-indigo-300 mb-1.5 font-bold uppercase opacity-80 tracking-wider flex items-center gap-1.5">
+                                    <div className="w-1 h-1 rounded-full bg-indigo-400"></div>
+                                    {mode === AppMode.LOOP ? 'Objective' : 'Command'}
                                 </div>
-                                <div className="whitespace-pre-wrap leading-relaxed text-sm md:text-base font-sans">
+                                <div className="whitespace-pre-wrap leading-relaxed text-sm sm:text-base font-medium text-slate-100">
                                     {event.message}
                                 </div>
                             </div>
@@ -387,23 +399,26 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
 
                 const isError = event.type === 'error';
                 return (
-                    <div key={idx} className="flex gap-3 md:gap-4 max-w-full md:max-w-[90%] animate-in fade-in slide-in-from-bottom-2 duration-300">
-                         <div className="flex-shrink-0 mt-1 hidden md:block">
-                             <div className={`w-8 h-8 rounded-lg flex items-center justify-center border shadow-lg ${isError ? 'bg-red-500/10 border-red-500/20' : 'bg-black/40 border-white/10'}`}>
-                                 {isError ? <AlertCircle size={16} className="text-red-400"/> : <Sparkles size={16} className="text-purple-400" />}
+                    <div key={idx} className="flex gap-4 max-w-full sm:max-w-[90%] animate-in fade-in slide-in-from-bottom-2 duration-300 group">
+                         <div className="flex-shrink-0 mt-1 hidden sm:block">
+                             <div className={`w-8 h-8 rounded-lg flex items-center justify-center border transition-colors ${isError ? 'bg-red-500/10 border-red-500/20 text-red-400' : 'bg-white/5 border-white/5 text-purple-400 group-hover:border-purple-500/30 group-hover:bg-purple-500/10'}`}>
+                                 {isError ? <AlertCircle size={16} /> : <Terminal size={16} />}
                              </div>
                          </div>
                          <div className="flex-1 min-w-0">
-                             <div className="flex items-center gap-2 mb-1.5 ml-1">
+                             <div className="flex items-center gap-2 mb-2">
                                 <span className={`text-[10px] font-bold uppercase tracking-wider ${isError ? 'text-red-400' : 'text-purple-300/80'}`}>{event.type || 'System'}</span>
-                                <span className="text-[10px] text-slate-600 font-mono">{event.ts ? new Date(event.ts).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}</span>
+                                <span className="text-[10px] text-slate-600 font-mono flex items-center gap-1">
+                                    <Clock size={10} />
+                                    {event.ts ? new Date(event.ts).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'}) : ''}
+                                </span>
                              </div>
                              
-                             <div className={`text-sm leading-relaxed p-4 rounded-2xl rounded-tl-sm border shadow-sm backdrop-blur-sm overflow-x-auto ${
-                                 isError ? 'bg-red-950/20 border-red-500/20 text-red-200' : 
-                                 'bg-[#1a162e]/60 border-white/5 text-slate-200'
+                             <div className={`text-xs sm:text-sm leading-relaxed p-4 rounded-xl border shadow-sm overflow-x-auto custom-scrollbar font-mono ${
+                                 isError ? 'bg-red-950/30 border-red-500/20 text-red-200' : 
+                                 'bg-[#0a0a0a]/60 border-white/5 text-slate-300'
                              }`}>
-                                 <pre className="whitespace-pre-wrap font-sans text-sm">{event.message}</pre>
+                                 <pre className="whitespace-pre-wrap break-words">{event.message}</pre>
                              </div>
                          </div>
                     </div>
@@ -412,11 +427,11 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
             
             {/* Thinking Loader */}
             {isRunActive && !status.includes('cancel') && (
-                 <div className="flex gap-3 md:gap-4 max-w-full md:max-w-[90%] animate-pulse ml-0 md:ml-0">
-                    <div className="w-8 h-8 flex-shrink-0 hidden md:block" />
-                    <div className="flex items-center gap-2 text-purple-400/50 text-xs bg-purple-900/5 px-4 py-2 rounded-full border border-purple-500/5">
+                 <div className="flex gap-4 max-w-full sm:max-w-[90%] animate-pulse ml-0">
+                    <div className="w-8 h-8 flex-shrink-0 hidden sm:block" />
+                    <div className="flex items-center gap-2 text-purple-400/70 text-xs bg-purple-500/5 px-4 py-2 rounded-full border border-purple-500/10">
                         <Loader2 size={12} className="animate-spin" />
-                        <span>Processing...</span>
+                        <span className="font-mono tracking-tight">Processing stream...</span>
                     </div>
                 </div>
             )}
@@ -429,7 +444,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
                     <CheckCircle size={14} />
                     Final Output
                 </h3>
-                <div className="bg-black/40 border border-emerald-500/20 rounded-2xl p-5 md:p-6 font-mono text-sm text-emerald-100/90 overflow-x-auto shadow-2xl relative group">
+                <div className="bg-[#050505] border border-emerald-500/20 rounded-2xl p-5 sm:p-6 font-mono text-sm text-emerald-100/90 overflow-x-auto shadow-2xl relative group custom-scrollbar">
                     <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500/50 rounded-l-xl transition-all group-hover:bg-emerald-400"></div>
                     <pre>{result}</pre>
                 </div>
@@ -442,7 +457,7 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
                     <AlertCircle size={14} />
                     Execution Failed
                 </h3>
-                <div className="bg-red-950/20 border border-red-500/20 rounded-2xl p-5 md:p-6 font-mono text-sm text-red-200 shadow-xl">
+                <div className="bg-red-950/20 border border-red-500/20 rounded-2xl p-5 sm:p-6 font-mono text-sm text-red-200 shadow-xl">
                     {error}
                 </div>
             </div>
@@ -452,72 +467,73 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
       </div>
 
       {/* 3. Input Controls */}
-      <div className="p-4 md:p-6 z-20 shrink-0">
-        <div className={`max-w-4xl mx-auto transition-all duration-500 ${!isRunActive ? 'bg-black/60 backdrop-blur-xl border border-white/10 shadow-2xl' : 'bg-transparent border-none shadow-none'} rounded-3xl p-1.5 md:p-2`}>
+      <div className="p-4 sm:p-6 z-30 shrink-0 bg-gradient-to-t from-[#050505] via-[#050505] to-transparent pt-10">
+        <div className={`max-w-4xl mx-auto transition-all duration-300 ${!isRunActive ? 'bg-[#0f0f13]/90 backdrop-blur-xl border border-white/10 shadow-2xl' : 'bg-transparent border-none shadow-none'} rounded-3xl p-2`}>
             
-            {/* Mode & Config Bar */}
+            {/* Mode & Config Bar - Horizontal Scroll on Mobile */}
             {!isRunActive && (
-                <div className="flex flex-col md:flex-row md:items-center gap-3 px-2 pt-2 pb-3 md:pb-2">
+                <div className="flex items-center gap-2 px-1 pt-1 pb-3 overflow-x-auto no-scrollbar mask-linear-fade">
                     {/* Toggle */}
-                    <div className="flex bg-white/5 rounded-xl p-1 border border-white/5 self-start">
+                    <div className="flex bg-white/5 rounded-lg p-0.5 border border-white/5 shrink-0">
                         <button 
                             onClick={() => setMode(AppMode.RUN)}
-                            className={`flex-1 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-all ${mode === AppMode.RUN ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                            className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wide transition-all ${mode === AppMode.RUN ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
                         >
                             Run
                         </button>
                         <button 
                             onClick={() => setMode(AppMode.LOOP)}
-                            className={`flex-1 px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide transition-all ${mode === AppMode.LOOP ? 'bg-pink-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                            className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wide transition-all ${mode === AppMode.LOOP ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
                         >
                             Loop
                         </button>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-3">
-                         {/* Executor */}
-                        <div className="relative group">
-                            <select 
-                                value={executor} 
-                                onChange={(e) => setExecutor(e.target.value)}
-                                className="appearance-none bg-black/40 border border-white/10 rounded-lg pl-3 pr-8 py-1.5 text-xs text-slate-300 focus:border-purple-500 outline-none hover:bg-white/5 transition-colors cursor-pointer"
-                            >
-                                {agents.map(a => <option key={a.name} value={a.name}>{a.name}</option>)}
-                            </select>
-                            <Terminal size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
-                        </div>
+                    <div className="w-px h-6 bg-white/5 mx-1 shrink-0"></div>
 
-                        {/* Retries */}
-                        {mode === AppMode.LOOP && (
-                             <div className="flex items-center gap-2 bg-black/40 border border-white/10 rounded-lg px-2 py-1.5 animate-in fade-in zoom-in-95">
-                                <span className="text-[10px] uppercase font-bold text-slate-500">Retries</span>
-                                <input 
-                                    type="number" 
-                                    min={0} 
-                                    max={10} 
-                                    value={maxRetries} 
-                                    onChange={(e) => setMaxRetries(parseInt(e.target.value))}
-                                    className="w-8 bg-transparent text-center text-xs text-white focus:outline-none"
-                                />
-                            </div>
-                        )}
-
-                        <label className="flex items-center gap-2 cursor-pointer group bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 hover:border-purple-500/50 transition-colors">
-                            <input 
-                                type="checkbox" 
-                                checked={dryRun} 
-                                onChange={(e) => setDryRun(e.target.checked)}
-                                className="w-3 h-3 rounded bg-white/10 border-white/20 text-purple-500 focus:ring-0 cursor-pointer"
-                            />
-                            <span className="text-[10px] font-bold uppercase text-slate-400 group-hover:text-purple-300 transition-colors">Dry Run</span>
-                        </label>
+                     {/* Executor */}
+                    <div className="relative group shrink-0">
+                        <select 
+                            value={executor} 
+                            onChange={(e) => setExecutor(e.target.value)}
+                            className="appearance-none bg-white/5 border border-white/10 rounded-lg pl-2 pr-7 py-1.5 text-xs text-slate-300 focus:border-purple-500 outline-none hover:bg-white/10 transition-colors cursor-pointer font-medium"
+                        >
+                            {agents.map(a => <option key={a.name} value={a.name} className="bg-gray-900">{a.name}</option>)}
+                        </select>
+                        <Terminal size={10} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
                     </div>
+
+                    {/* Retries */}
+                    {mode === AppMode.LOOP && (
+                         <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 shrink-0 animate-in fade-in zoom-in-95">
+                            <span className="text-[10px] uppercase font-bold text-slate-500">Retries</span>
+                            <input 
+                                type="number" 
+                                min={0} 
+                                max={10} 
+                                value={maxRetries} 
+                                onChange={(e) => setMaxRetries(parseInt(e.target.value))}
+                                className="w-6 bg-transparent text-center text-xs text-white focus:outline-none font-bold"
+                            />
+                        </div>
+                    )}
+
+                    <label className="flex items-center gap-2 cursor-pointer group bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 hover:border-purple-500/50 transition-colors shrink-0">
+                        <input 
+                            type="checkbox" 
+                            checked={dryRun} 
+                            onChange={(e) => setDryRun(e.target.checked)}
+                            className="w-3 h-3 rounded bg-white/10 border-white/20 text-purple-500 focus:ring-0 cursor-pointer"
+                        />
+                        <span className="text-[10px] font-bold uppercase text-slate-400 group-hover:text-purple-300 transition-colors">Dry Run</span>
+                    </label>
                 </div>
             )}
 
             {/* Input Field */}
-            <div className="relative group">
+            <div className="relative group flex items-end gap-2">
                 <textarea
+                    ref={textareaRef}
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
                     onKeyDown={(e) => {
@@ -528,35 +544,34 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
                     }}
                     placeholder={mode === AppMode.LOOP ? "Describe the task loop..." : "Enter a command or prompt..."}
                     disabled={isRunActive || isSending}
-                    className={`w-full ${!isRunActive ? 'bg-white/5' : 'bg-black/40 border-white/10'} text-white placeholder-slate-500/60 rounded-2xl py-4 px-5 pr-16 focus:ring-2 focus:ring-purple-500/40 focus:bg-white/10 outline-none resize-none min-h-[60px] max-h-[160px] transition-all text-sm md:text-base leading-relaxed disabled:opacity-50`}
+                    className={`w-full ${!isRunActive ? 'bg-transparent' : 'bg-[#0f0f13] border border-white/10 rounded-2xl'} text-white placeholder-slate-600 py-3 px-4 focus:bg-white/5 outline-none resize-none transition-all text-sm sm:text-base leading-relaxed disabled:opacity-50 disabled:cursor-not-allowed max-h-[200px] overflow-y-auto custom-scrollbar`}
                     rows={1}
                 />
                 
-                <div className="absolute right-2 bottom-2">
+                <div className="pb-1 pr-1">
                     {isRunActive ? (
                         <button
                             onClick={handleStop} 
                             disabled={isCancelling}
-                            className={`p-2.5 rounded-xl flex items-center gap-2 transition-all ${
+                            className={`p-3 rounded-xl flex items-center justify-center transition-all ${
                                 isCancelling 
                                 ? 'bg-orange-500/20 text-orange-400' 
                                 : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
                             }`}
                         >
                            {isCancelling ? <Loader2 size={20} className="animate-spin" /> : <StopCircle size={20} />}
-                           <span className="text-xs font-bold uppercase hidden md:inline">Stop</span>
                         </button>
                     ) : (
                         <button
                             onClick={handleStart}
                             disabled={!prompt.trim() || isSending}
-                            className={`p-2.5 rounded-xl flex items-center justify-center transition-all duration-300 shadow-lg ${
+                            className={`p-3 rounded-xl flex items-center justify-center transition-all duration-300 shadow-lg ${
                                 prompt.trim() && !isSending 
-                                ? 'bg-white text-black hover:scale-105 hover:bg-purple-50' 
-                                : 'bg-white/10 text-slate-500 cursor-not-allowed'
+                                ? 'bg-indigo-600 text-white hover:scale-105 hover:bg-indigo-500 shadow-indigo-900/20' 
+                                : 'bg-white/5 text-slate-500 cursor-not-allowed'
                             }`}
                         >
-                            {isSending ? <Loader2 size={20} className="animate-spin" /> : <ArrowRight size={20} />}
+                            {isSending ? <Loader2 size={20} className="animate-spin" /> : <CornerDownLeft size={20} />}
                         </button>
                     )}
                 </div>

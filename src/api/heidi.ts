@@ -1,6 +1,7 @@
 import { Agent, LoopRequest, RunDetails, RunRequest, RunResponse, RunSummary, SettingsState, User, AuthProvider } from '../types';
 
-const DEFAULT_BASE_URL = 'http://localhost:7777';
+// Checklist: Default to 127.0.0.1:7777, respect env var
+const DEFAULT_BASE_URL = (import.meta as any).env?.VITE_HEIDI_SERVER_BASE || 'http://127.0.0.1:7777';
 
 export const getSettings = (): SettingsState => {
   return {

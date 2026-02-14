@@ -2,33 +2,35 @@ import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Chat from './pages/Chat';
 import Settings from './pages/Settings';
+import Gemini from './pages/Gemini';
 
 function App() {
-  const [currentView, setCurrentView] = useState<'chat' | 'settings'>('chat');
+  const [currentView, setCurrentView] = useState<'chat' | 'settings' | 'gemini'>('chat');
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [refreshSidebarTrigger, setRefreshSidebarTrigger] = useState(0);
   
   // Default to open on desktop, closed on mobile
-  const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 1024);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
 
   // Monitor screen size
   useEffect(() => {
     const handleResize = () => {
-      const mobile = window.innerWidth < 768;
+      const mobile = window.innerWidth < 1024;
       setIsMobile(mobile);
       if (!mobile && !isSidebarOpen) {
-          // Optional: Auto-open when resizing to desktop
-          // setIsSidebarOpen(true); 
+          setIsSidebarOpen(true); 
+      } else if (mobile && isSidebarOpen) {
+          setIsSidebarOpen(false);
       }
     };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [isSidebarOpen]);
+  }, []);
 
-  const handleNavigate = (view: 'chat' | 'settings') => {
+  const handleNavigate = (view: 'chat' | 'settings' | 'gemini') => {
     setCurrentView(view);
-    if (view === 'settings') {
+    if (view === 'settings' || view === 'gemini') {
         setSelectedRunId(null);
     }
     if (isMobile) setIsSidebarOpen(false);
@@ -53,12 +55,18 @@ function App() {
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
   return (
-    <div className="flex h-screen w-full bg-[#0f0c29] bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#240b36] via-[#0f0c29] to-[#000000] text-slate-100 overflow-hidden font-sans selection:bg-pink-500/30">
+    <div className="flex h-[100dvh] w-full bg-[#050505] text-slate-100 overflow-hidden font-sans selection:bg-purple-500/30 relative">
       
+      {/* Dynamic Background */}
+      <div className="fixed inset-0 z-0 pointer-events-none">
+          <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-purple-900/10 rounded-full blur-[120px] opacity-40 animate-pulse"></div>
+          <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-indigo-900/10 rounded-full blur-[120px] opacity-40 delay-700 animate-pulse"></div>
+      </div>
+
       {/* Mobile Backdrop */}
       {isMobile && isSidebarOpen && (
         <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in duration-200"
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in duration-300"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
@@ -66,16 +74,17 @@ function App() {
       {/* Sidebar Wrapper */}
       <aside 
         className={`
-          fixed md:relative z-50 h-full flex-shrink-0
-          transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1.0)]
+          fixed lg:relative z-50 h-full flex-shrink-0
+          transition-transform duration-300 cubic-bezier(0.4, 0, 0.2, 1)
           ${isSidebarOpen 
-            ? 'translate-x-0 w-[280px] md:w-80' 
-            : '-translate-x-full w-[280px] md:translate-x-0 md:w-0 md:opacity-0 md:overflow-hidden'
+            ? 'translate-x-0' 
+            : '-translate-x-full lg:translate-x-0 lg:w-0 lg:opacity-0 lg:overflow-hidden'
           }
-          bg-black/80 backdrop-blur-xl md:bg-transparent md:backdrop-blur-none border-r border-white/5 md:border-none
+          w-[280px] lg:w-[320px]
+          border-r border-white/5 bg-[#0a0a0a]/95 backdrop-blur-xl lg:bg-transparent lg:backdrop-blur-none
         `}
       >
-        <div className="w-full h-full md:border-r md:border-white/5 bg-black/20">
+        <div className="w-full h-full lg:bg-black/20">
             <Sidebar 
                 currentView={currentView}
                 onNavigate={handleNavigate}
@@ -90,8 +99,13 @@ function App() {
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col relative h-full min-w-0 bg-gradient-to-b from-transparent to-black/20">
-        {currentView === 'settings' ? (
+      <main className="flex-1 flex flex-col relative h-full min-w-0 z-10 bg-gradient-to-b from-transparent to-black/30">
+        {currentView === 'gemini' ? (
+             <Gemini 
+                isSidebarOpen={isSidebarOpen}
+                onToggleSidebar={toggleSidebar}
+             />
+        ) : currentView === 'settings' ? (
             <Settings 
                 isSidebarOpen={isSidebarOpen}
                 onToggleSidebar={toggleSidebar}

@@ -68,7 +68,7 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
 
   // --- Initialization ---
   useEffect(() => {
-    // Define supported models
+    // Define supported models per user request
     const supportedModels = [
         { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro' },
         { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash' },
@@ -115,7 +115,6 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
             });
         }
     };
-    // Debounce slightly to avoid thrashing DB on every keystroke/token if streaming were granular
     const timer = setTimeout(save, 1000);
     return () => clearTimeout(timer);
   }, [messages, sessionId]);
@@ -312,7 +311,7 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
         setTimeout(() => {
             mediaRecorder.stop();
             setLiveStatus("Disconnected");
-        }, 5000); // Record for 5 seconds for simple test
+        }, 5000); 
     } catch (e) {
         console.error("Mic permission denied", e);
     }
@@ -570,9 +569,11 @@ export default function Gemini({ isSidebarOpen, onToggleSidebar }: GeminiProps) 
        {/* Header */}
        <div className="px-6 py-4 flex items-center justify-between bg-black/20 backdrop-blur-md border-b border-white/5 z-20 shrink-0">
            <div className="flex items-center gap-4">
-            <button onClick={onToggleSidebar} className="text-slate-400 hover:text-white p-2 -ml-2 rounded-lg hover:bg-white/5 transition-colors">
-                <PanelLeft size={20} />
-            </button>
+            {!isSidebarOpen && (
+                <button onClick={onToggleSidebar} className="text-slate-400 hover:text-white p-2 -ml-2 rounded-lg hover:bg-white/5 transition-colors">
+                    <PanelLeft size={20} />
+                </button>
+            )}
             <h1 className="text-lg font-bold flex items-center gap-2 tracking-tight">
                 <Sparkles size={20} className="text-indigo-400" />
                 Gemini Studio
