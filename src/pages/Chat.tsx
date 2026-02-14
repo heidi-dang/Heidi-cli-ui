@@ -4,7 +4,7 @@ import { Agent, AppMode, RunEvent, RunStatus, RunUsage } from '../types';
 import { 
   Send, StopCircle, CheckCircle, AlertCircle, Loader2, PanelLeft,
   Sparkles, Cpu, Map, Terminal, Eye, Shield, ArrowRight, CornerDownLeft, Clock,
-  Coins, Layers, Zap
+  Coins, Layers, Zap, Bot
 } from 'lucide-react';
 
 interface ChatProps {
@@ -412,9 +412,9 @@ const Chat: React.FC<ChatProps> = ({ initialRunId, onRunCreated, isSidebarOpen, 
         {/* Empty State */}
         {!runId && transcript.length === 0 && !isSending && (
           <div className="h-full flex flex-col items-center justify-center text-center px-4 pb-20 opacity-0 animate-in fade-in zoom-in duration-700 fill-mode-forwards">
-             <div className="w-20 h-20 sm:w-24 sm:h-24 mb-6 relative group cursor-default">
+             <div className="w-20 h-20 sm:w-24 sm:h-24 mb-6 relative group cursor-default flex items-center justify-center">
                  <div className="absolute inset-0 bg-purple-500/20 blur-[40px] rounded-full group-hover:bg-purple-500/30 transition-all duration-700"></div>
-                 <img src="/heidiai_logo.png" className="relative w-full h-full object-contain drop-shadow-2xl opacity-90 grayscale-[0.2]" alt="Heidi AI" />
+                 <Bot size={64} className="text-white opacity-80 relative z-10" />
              </div>
             <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Heidi AI</h2>
             <p className="text-slate-400 mt-2 text-sm max-w-[280px] sm:max-w-md mx-auto leading-relaxed">

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { RunSummary, User } from '../types';
 import { api } from '../api/heidi';
-import { RefreshCw, Settings, Circle, CheckCircle, XCircle, AlertTriangle, PanelLeft, User as UserIcon, Plus, History, ChevronRight, Sparkles, X, Layers, Coins, LogOut } from 'lucide-react';
+import { RefreshCw, Settings, Circle, CheckCircle, XCircle, AlertTriangle, PanelLeft, User as UserIcon, Plus, History, Sparkles, X, Layers, Coins, LogOut, Bot, Trash2 } from 'lucide-react';
 
 interface SidebarProps {
   currentView: 'chat' | 'settings' | 'gemini';
@@ -47,6 +47,20 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onNewChat, o
       }
   };
 
+  const handleDelete = async (runId: string) => {
+      if (confirm('Are you sure you want to delete this run?')) {
+          try {
+              await api.deleteRun(runId);
+              setRuns(prev => prev.filter(r => r.run_id !== runId));
+              if (selectedRunId === runId) {
+                  onNewChat();
+              }
+          } catch (e) {
+              console.error("Failed to delete run", e);
+          }
+      }
+  };
+
   const getStatusIcon = (status: string) => {
     const s = status?.toLowerCase() || '';
     if (s === 'completed') return <CheckCircle size={14} className="text-emerald-400" />;
@@ -64,7 +78,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onNewChat, o
         >
             <div className="w-10 h-10 relative flex-shrink-0 flex items-center justify-center bg-gradient-to-tr from-indigo-500 to-purple-600 rounded-xl shadow-lg shadow-purple-900/20 p-[1px] group-hover:shadow-purple-900/40 transition-all duration-300 group-hover:scale-105">
                 <div className="w-full h-full bg-[#0a0a0a] rounded-[11px] flex items-center justify-center overflow-hidden">
-                     <img src="/heidiai_logo.png" alt="Heidi AI" className="w-full h-full object-contain p-1 opacity-90 group-hover:opacity-100" />
+                     <Bot size={24} className="text-white opacity-90 group-hover:opacity-100" />
                 </div>
             </div>
             <div className="flex flex-col">
@@ -183,9 +197,18 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, onNewChat, o
                         </div>
                     )}
                     
-                    {/* Hover Chevron */}
-                    <div className={`absolute right-2 top-1/2 -translate-y-1/2 opacity-0 -translate-x-2 transition-all duration-300 ${selectedRunId === run.run_id ? 'opacity-100 translate-x-0 text-purple-400' : 'group-hover:opacity-100 group-hover:translate-x-0 text-slate-500'}`}>
-                        <ChevronRight size={14} />
+                    {/* Delete Action */}
+                    <div className={`absolute right-2 top-1/2 -translate-y-1/2 opacity-0 transition-all duration-300 ${selectedRunId === run.run_id ? 'opacity-100 translate-x-0' : 'group-hover:opacity-100 group-hover:translate-x-0'}`}>
+                        <div
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                handleDelete(run.run_id);
+                            }}
+                            className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-full transition-colors cursor-pointer"
+                            title="Delete Run"
+                        >
+                            <Trash2 size={14} />
+                        </div>
                     </div>
                 </button>
                 ))}

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/heidi';
 import { AuthProvider } from '../types';
-import { Github, LogIn, Loader2, AlertCircle } from 'lucide-react';
+import { Github, LogIn, Loader2, AlertCircle, Bot } from 'lucide-react';
 
 export default function Login() {
     const [providers, setProviders] = useState<AuthProvider[]>([]);
@@ -48,7 +48,7 @@ export default function Login() {
 
                 <div className="text-center mb-10 relative z-10">
                     <div className="w-20 h-20 bg-gradient-to-tr from-indigo-500 to-purple-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg shadow-purple-900/40 mb-4 p-0.5">
-                        <img src="/heidiai_logo.png" alt="Heidi" className="w-full h-full object-contain p-2 rounded-[14px]" />
+                        <Bot size={48} className="text-white" />
                     </div>
                     <h1 className="text-2xl font-bold tracking-tight mb-2">Welcome to Heidi AI</h1>
                     <p className="text-slate-400 text-sm">Sign in to continue to your workspace</p>

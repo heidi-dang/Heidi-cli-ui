@@ -215,6 +215,16 @@ export const api = {
     }
   },
 
+  deleteRun: async (runId: string): Promise<void> => {
+    const res = await safeFetch(`${getBaseUrl()}/runs/${runId}`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+    });
+    if (!res.ok) {
+        throw new Error('Failed to delete run');
+    }
+  },
+
   getRuns: async (limit = 10): Promise<RunSummary[]> => {
     const res = await safeFetch(`${getBaseUrl()}/runs?limit=${limit}`, { headers: getHeaders() });
     if (!res.ok) throw new Error('Failed to fetch runs');
