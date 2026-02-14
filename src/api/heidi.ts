@@ -1,4 +1,4 @@
-import { Agent, LoopRequest, RunDetails, RunRequest, RunResponse, RunSummary, SettingsState, AuthProvider, AuthStatus, IntegrationStatus } from '../types';
+import { Agent, LoopRequest, RunDetails, RunRequest, RunResponse, RunSummary, SettingsState, AuthProvider, AuthStatus, IntegrationStatus, OpenAIConnectionStatus, OpenAIConnectionTestResult } from '../types';
 
 // Use relative path by default to leverage Vite proxy
 const DEFAULT_BASE_URL = '/api';
@@ -124,6 +124,29 @@ export const api = {
       } catch (e) {
           return { provider: 'opencode', connected: false, details: 'Backend unreachable' };
       }
+  },
+
+  getOpenAIStatus: async (): Promise<OpenAIConnectionStatus> => {
+    try {
+      const res = await safeFetch(`${getBaseUrl()}/connect/opencode/openai/status`, { headers: getHeaders() });
+      if (!res.ok) return { connected: false, lastError: 'Status check failed' };
+      return res.json();
+    } catch (e: any) {
+      return { connected: false, lastError: e.message || 'Backend unreachable' };
+    }
+  },
+
+  testOpenAIConnection: async (): Promise<OpenAIConnectionTestResult> => {
+    try {
+        const res = await safeFetch(`${getBaseUrl()}/connect/opencode/openai/test`, {
+            method: 'POST',
+            headers: getHeaders()
+        });
+        if (!res.ok) return { pass: false, message: 'Test request failed' };
+        return res.json();
+    } catch (e: any) {
+        return { pass: false, message: e.message || 'Test failed' };
+    }
   },
 
   // Agent & Run Methods

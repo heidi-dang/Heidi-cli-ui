@@ -115,3 +115,15 @@ export interface IntegrationStatus {
   details?: string;
   last_checked?: string;
 }
+
+export interface OpenAIConnectionStatus {
+  connected: boolean;
+  authPath?: string;
+  models?: string[];
+  lastError?: string;
+}
+
+export interface OpenAIConnectionTestResult {
+  pass: boolean;
+  message?: string;
+}
